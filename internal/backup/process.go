@@ -45,11 +45,14 @@ func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret,
 			}
 
 			// Process the file
-			err := processFile(ctx, filePath, secret, tempDir, readOnlyDB, uploader, insertFileCh)
+			uploaded, err := processFile(ctx, filePath, secret, tempDir, readOnlyDB, uploader, insertFileCh)
 			if err != nil {
 				logger.Error("Error processing file",
 					slog.String("file", filePath),
 					slog.String("error", err.Error()))
+			}
+			if uploaded {
+				logger.Info("Uploaded file to S3", slog.String("file", filePath))
 			}
 
 		case <-ctx.Done():
@@ -59,39 +62,39 @@ func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret,
 	}
 }
 
-func processFile(ctx context.Context, filePath, secret, tempDir string, db *database.Database, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) error {
+func processFile(ctx context.Context, filePath, secret, tempDir string, db *database.Database, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) (bool, error) {
 	// Get file info
 	info, err := os.Stat(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to stat file %s: %w", filePath, err)
+		return false, fmt.Errorf("failed to stat file %s: %w", filePath, err)
 	}
 
 	// Check if file already exists in database
 	exists, err := db.DoesFileExist(ctx, filePath, info.Size(), info.ModTime().Unix())
 	if err != nil {
-		return fmt.Errorf("database check failed for file %s: %w", filePath, err)
+		return false, fmt.Errorf("database check failed for file %s: %w", filePath, err)
 	}
 	if exists {
 		// File already exists with same attributes, skip it
-		return nil
+		return false, nil
 	}
 
 	// Encrypt the file. Use a random filename in the temp directory
 	encFileName, err := generateRandomURLEncodedString(16)
 	if err != nil {
-		return fmt.Errorf("failed to generate random filename for encryption: %w", err)
+		return false, fmt.Errorf("failed to generate random filename for encryption: %w", err)
 	}
 	encFilePath := filepath.Join(tempDir, encFileName+".enc")
 	err = encryptFile(ctx, filePath, encFilePath, secret)
 	if err != nil {
-		return fmt.Errorf("failed to encrypt file %s: %w", filePath, err)
+		return false, fmt.Errorf("failed to encrypt file %s: %w", filePath, err)
 	}
 	defer os.Remove(encFilePath)
 
 	// Upload to S3
 	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath)
 	if err != nil {
-		return fmt.Errorf("failed to upload file %s to S3: %w", filePath, err)
+		return false, fmt.Errorf("failed to upload file %s to S3: %w", filePath, err)
 	}
 
 	// Send file info to insert worker
@@ -102,7 +105,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 		Size:           info.Size(),
 	}
 
-	return nil
+	return true, nil
 }
 
 func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
