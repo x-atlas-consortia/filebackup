@@ -1,0 +1,10 @@
+*.db
+config*.json
+!config.example.json
+
+.DS_Store
+.idea/
+.vscode/
+
+logs/
+tmp/
