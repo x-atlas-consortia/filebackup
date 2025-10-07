@@ -40,7 +40,7 @@ func Backup(config core.Config) error {
 		slog.Int("workers", config.MaxWorkers),
 		slog.String("database", config.DatabasePath))
 
-	// Initialize the s3 file uploader
+	// Initialize the s3 file manager
 	awsConfig := aws.Config{
 		AccessKeyID:     config.AWSAccessKeyID,
 		SecretAccessKey: config.AWSSecretAccessKey,
@@ -50,7 +50,7 @@ func Backup(config core.Config) error {
 	}
 	uploader, err := aws.New(ctx, awsConfig, logger)
 	if err != nil {
-		logger.Error("Failed to create S3 uploader", slog.String("error", err.Error()))
+		logger.Error("Failed to create S3 manager", slog.String("error", err.Error()))
 		return err
 	}
 

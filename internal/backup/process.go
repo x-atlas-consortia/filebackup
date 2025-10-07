@@ -22,7 +22,7 @@ import (
 	"github.com/tjmadonna/filebackup/internal/database"
 )
 
-func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileUploader, insertFileCh chan<- database.InsertFileItem) {
+func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) {
 	// Read mode database
 	readOnlyDB, err := database.New(ctx, dbPath, true)
 	if err != nil {
@@ -59,7 +59,7 @@ func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret,
 	}
 }
 
-func processFile(ctx context.Context, filePath, secret, tempDir string, db *database.Database, uploader *aws.AWSS3FileUploader, insertFileCh chan<- database.InsertFileItem) error {
+func processFile(ctx context.Context, filePath, secret, tempDir string, db *database.Database, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) error {
 	// Get file info
 	info, err := os.Stat(filePath)
 	if err != nil {

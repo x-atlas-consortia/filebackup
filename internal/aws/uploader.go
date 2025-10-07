@@ -24,7 +24,7 @@ type Config struct {
 	EncryptionKey   []byte
 }
 
-func New(ctx context.Context, config Config, logger *slog.Logger) (*AWSS3FileUploader, error) {
+func New(ctx context.Context, config Config, logger *slog.Logger) (*AWSS3FileManager, error) {
 	// Create S3 client
 	s3Client := s3.New(s3.Options{
 		Credentials: credentials.NewStaticCredentialsProvider(config.AccessKeyID, config.SecretAccessKey, ""),
@@ -43,20 +43,20 @@ func New(ctx context.Context, config Config, logger *slog.Logger) (*AWSS3FileUpl
 		return nil, errors.New("bucket versioning is not enabled")
 	}
 
-	return &AWSS3FileUploader{
+	return &AWSS3FileManager{
 		bucket:   config.Bucket,
 		logger:   logger,
 		s3Client: s3Client,
 	}, nil
 }
 
-type AWSS3FileUploader struct {
+type AWSS3FileManager struct {
 	bucket   string
 	logger   *slog.Logger
 	s3Client *s3.Client
 }
 
-func (u *AWSS3FileUploader) UploadFile(ctx context.Context, filePath, objectKey string) (string, error) {
+func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey string) (string, error) {
 	// Open the file for reading
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -71,8 +71,8 @@ func (u *AWSS3FileUploader) UploadFile(ctx context.Context, filePath, objectKey 
 	}
 	fileSize := fileInfo.Size()
 
-	u.logger.Debug("Uploading file to S3 from path",
-		slog.String("bucket", u.bucket),
+	m.logger.Debug("Uploading file to S3 from path",
+		slog.String("bucket", m.bucket),
 		slog.String("filePath", filePath),
 		slog.String("objectKey", objectKey),
 		slog.Int64("fileSize", fileSize))
@@ -91,13 +91,13 @@ func (u *AWSS3FileUploader) UploadFile(ctx context.Context, filePath, objectKey 
 	}
 
 	// Create a new Upload Manager for this operation
-	uploader := manager.NewUploader(u.s3Client, func(u *manager.Uploader) {
+	uploader := manager.NewUploader(m.s3Client, func(u *manager.Uploader) {
 		u.PartSize = partSize
 	})
 
 	// Perform the upload
 	resp, err := uploader.Upload(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(u.bucket),
+		Bucket: aws.String(m.bucket),
 		Key:    aws.String(objectKey),
 		Body:   file,
 		// StorageClass:      types.StorageClassDeepArchive,
@@ -114,14 +114,14 @@ func (u *AWSS3FileUploader) UploadFile(ctx context.Context, filePath, objectKey 
 		var apiErr smithy.APIError
 		var noBucket *types.NoSuchBucket
 		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "EntityTooLarge" {
-			u.logger.Error("Error while uploading object. The object is too large.",
-				slog.String("bucket", u.bucket))
+			m.logger.Error("Error while uploading object. The object is too large.",
+				slog.String("bucket", m.bucket))
 		} else if errors.As(err, &noBucket) {
-			u.logger.Error("Bucket does not exist",
-				slog.String("bucket", u.bucket))
+			m.logger.Error("Bucket does not exist",
+				slog.String("bucket", m.bucket))
 		} else {
-			u.logger.Error("Couldn't upload file",
-				slog.String("bucket", u.bucket),
+			m.logger.Error("Couldn't upload file",
+				slog.String("bucket", m.bucket),
 				slog.String("objectKey", objectKey),
 				slog.String("error", err.Error()))
 		}
@@ -129,12 +129,12 @@ func (u *AWSS3FileUploader) UploadFile(ctx context.Context, filePath, objectKey 
 	}
 
 	// Wait for object to exist to confirm upload
-	err = s3.NewObjectExistsWaiter(u.s3Client).Wait(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(u.bucket),
+	err = s3.NewObjectExistsWaiter(m.s3Client).Wait(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(m.bucket),
 		Key:    aws.String(objectKey),
 	}, time.Minute)
 	if err != nil {
-		u.logger.Warn("Failed attempt to wait for object to exist",
+		m.logger.Warn("Failed attempt to wait for object to exist",
 			slog.String("objectKey", objectKey))
 	}
 
@@ -142,11 +142,11 @@ func (u *AWSS3FileUploader) UploadFile(ctx context.Context, filePath, objectKey 
 	versionID := ""
 	if resp.VersionID != nil {
 		versionID = *resp.VersionID
-		u.logger.Debug("File uploaded successfully with version ID",
+		m.logger.Debug("File uploaded successfully with version ID",
 			slog.String("objectKey", objectKey),
 			slog.String("versionID", versionID))
 	} else {
-		u.logger.Debug("File uploaded successfully (versioning not enabled)",
+		m.logger.Debug("File uploaded successfully (versioning not enabled)",
 			slog.String("objectKey", objectKey))
 	}
 
