@@ -13,9 +13,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tjmadonna/filebackup/internal/aws"
-	"github.com/tjmadonna/filebackup/internal/core"
-	"github.com/tjmadonna/filebackup/internal/database"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
 func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) {

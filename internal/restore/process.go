@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tjmadonna/filebackup/internal/aws"
-	"github.com/tjmadonna/filebackup/internal/core"
-	"github.com/tjmadonna/filebackup/internal/database"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
 func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) {

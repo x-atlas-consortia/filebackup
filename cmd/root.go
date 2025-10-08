@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tjmadonna/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
 )
 
 // rootCmd represents the base command when called without any subcommands

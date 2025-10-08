@@ -1,4 +1,4 @@
-module github.com/tjmadonna/filebackup
+module github.com/x-atlas-consortia/filebackup
 
 go 1.25.1
 

@@ -5,9 +5,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tjmadonna/filebackup/internal/aws"
-	"github.com/tjmadonna/filebackup/internal/core"
-	"github.com/tjmadonna/filebackup/internal/restore"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/restore"
 )
 
 // restoreCmd represents the restore subcommand

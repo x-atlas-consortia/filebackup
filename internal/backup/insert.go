@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/tjmadonna/filebackup/internal/database"
+	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
 const databaseBatchSize = 500

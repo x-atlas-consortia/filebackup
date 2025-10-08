@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tjmadonna/filebackup/internal/aws"
-	"github.com/tjmadonna/filebackup/internal/core"
-	"github.com/tjmadonna/filebackup/internal/database"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
 func Backup(config core.Config) error {

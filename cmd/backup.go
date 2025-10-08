@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tjmadonna/filebackup/internal/backup"
-	"github.com/tjmadonna/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/backup"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
 )
 
 // backupCmd represents the backup subcommand

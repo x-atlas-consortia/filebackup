@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tjmadonna/filebackup/cmd"
+import "github.com/x-atlas-consortia/filebackup/cmd"
 
 func main() {
 	cmd.Execute()

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tjmadonna/filebackup/internal/aws"
-	"github.com/tjmadonna/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
+	"github.com/x-atlas-consortia/filebackup/internal/core"
 )
 
 func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) error {
