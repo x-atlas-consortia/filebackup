@@ -15,6 +15,8 @@ import (
 )
 
 func Backup(config core.Config) error {
+	startTime := time.Now()
+
 	// Setup logger
 	logger, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
 	if err != nil {
@@ -107,6 +109,7 @@ func Backup(config core.Config) error {
 	dbInsertWg.Wait()
 	logger.Info("Database worker finished")
 
-	logger.Info("Backup process completed successfully")
+	logger.Info("Backup process completed",
+		slog.String("duration", fmt.Sprintf("%.2f seconds", time.Since(startTime).Seconds())))
 	return nil
 }

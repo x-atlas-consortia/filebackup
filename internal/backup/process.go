@@ -64,9 +64,10 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	if err != nil {
 		return false, fmt.Errorf("failed to stat file %s: %w", filePath, err)
 	}
+	lastModifiedAt := info.ModTime().UTC() // Use UTC for consistency
 
 	// Check if file already exists in database
-	exists, err := db.DoesFileExist(ctx, filePath, info.Size(), info.ModTime().Unix())
+	exists, err := db.DoesFileExist(ctx, filePath, info.Size(), lastModifiedAt.Unix())
 	if err != nil {
 		return false, fmt.Errorf("database check failed for file %s: %w", filePath, err)
 	}
@@ -88,7 +89,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	defer os.Remove(encFilePath)
 
 	// Upload to S3
-	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath)
+	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath, lastModifiedAt)
 	if err != nil {
 		return false, fmt.Errorf("failed to upload file %s to S3: %w", filePath, err)
 	}
@@ -96,7 +97,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	// Send file info to insert worker
 	insertFileCh <- database.InsertFileItem{
 		AWSVersionID:   awsVersionID,
-		LastModifiedAt: info.ModTime().Unix(),
+		LastModifiedAt: lastModifiedAt.Unix(),
 		Path:           filePath,
 		SHA256:         string(checksum),
 		Size:           info.Size(),
