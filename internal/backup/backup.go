@@ -46,7 +46,6 @@ func Backup(config core.Config) error {
 		SecretAccessKey: config.AWSSecretAccessKey,
 		Region:          config.AWSRegion,
 		Bucket:          config.AWSS3Bucket,
-		EncryptionKey:   []byte(config.EncryptionSecret),
 	}
 	uploader, err := aws.New(ctx, awsConfig, logger)
 	if err != nil {

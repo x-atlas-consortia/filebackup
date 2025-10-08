@@ -21,7 +21,6 @@ type Config struct {
 	SecretAccessKey string
 	Region          string
 	Bucket          string
-	EncryptionKey   []byte
 }
 
 func New(ctx context.Context, config Config, logger *slog.Logger) (*AWSS3FileManager, error) {
