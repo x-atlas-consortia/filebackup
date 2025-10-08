@@ -5,8 +5,8 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -85,7 +85,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 		return false, fmt.Errorf("failed to generate random filename for encryption: %w", err)
 	}
 	encFilePath := filepath.Join(tempDir, encFileName+".enc")
-	err = encryptFile(ctx, filePath, encFilePath, secret)
+	checksum, err := encryptFile(ctx, filePath, encFilePath, secret)
 	if err != nil {
 		return false, fmt.Errorf("failed to encrypt file %s: %w", filePath, err)
 	}
@@ -102,19 +102,20 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 		AWSVersionID:   awsVersionID,
 		LastModifiedAt: info.ModTime().Unix(),
 		Path:           filePath,
+		SHA256:         string(checksum),
 		Size:           info.Size(),
 	}
 
 	return true, nil
 }
 
-func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
+func encryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, error) {
 	// 64GB Limit, NIST Special Publication 800-38D section 5.2.1.1)
 	// Limit in crypto library is 2**31 - 1 byte
 	chunkSize := 1 << 30 // 1GB
 	salt, err := generateRandomBytes(16)
 	if err != nil {
-		return fmt.Errorf("failed to generate salt: %w", err)
+		return nil, fmt.Errorf("failed to generate salt: %w", err)
 	}
 
 	// Generate an encryption key and salt for each file
@@ -124,34 +125,34 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
 	key := argon2.IDKey([]byte(secret), salt, 3, 64*1024, uint8(runtime.NumCPU()), 32)
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return fmt.Errorf("failed to create cipher: %w", err)
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
 	}
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return fmt.Errorf("failed to create GCM: %w", err)
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
 	}
 
 	// Open the input file for reading and the output file for writing
 	inputFile, err := os.Open(inPath)
 	if err != nil {
-		return fmt.Errorf("failed to open input file: %w", err)
+		return nil, fmt.Errorf("failed to open input file: %w", err)
 	}
 	defer inputFile.Close()
 
 	// Create the output file path
 	outputFile, err := os.Create(outPath)
 	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
+		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outputFile.Close()
 
 	// Write the salt at the beginning of the output file
 	if _, err = outputFile.Write(salt); err != nil {
-		return fmt.Errorf("failed to write salt to output file: %w", err)
+		return nil, fmt.Errorf("failed to write salt to output file: %w", err)
 	}
 
-	// Calculate the MD5 hash of the original file for integrity verification
-	checksumHash := md5.New()
+	// Calculate the SHA256 hash of the original file for integrity verification
+	checksumHash := sha256.New()
 
 	// Process the file in chunks
 	buffer := make([]byte, chunkSize)
@@ -159,7 +160,7 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
 		// Check if context in chunks
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -170,7 +171,7 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
 				// Reached end of file
 				break
 			}
-			return fmt.Errorf("error reading input file: %w", err)
+			return nil, fmt.Errorf("error reading input file: %w", err)
 		}
 
 		// If we read fewer bytes than the buffer size, resize the buffer
@@ -184,7 +185,7 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
 		// Generate a unique nonce for each chunk
 		nonce, err := generateRandomBytes(aesgcm.NonceSize())
 		if err != nil {
-			return fmt.Errorf("failed to generate nonce: %w", err)
+			return nil, fmt.Errorf("failed to generate nonce: %w", err)
 		}
 
 		// Encrypt the chunk
@@ -193,19 +194,19 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
 		// Format: [nonce][length of ciphertext as uint64][ciphertext]
 		// Write the nonce
 		if _, err = outputFile.Write(nonce); err != nil {
-			return fmt.Errorf("failed to write nonce: %w", err)
+			return nil, fmt.Errorf("failed to write nonce: %w", err)
 		}
 
 		// Write the length of the ciphertext as a uint64 (8 bytes)
 		lengthBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(lengthBytes, uint64(len(ciphertext)))
 		if _, err = outputFile.Write(lengthBytes); err != nil {
-			return fmt.Errorf("failed to write ciphertext length: %w", err)
+			return nil, fmt.Errorf("failed to write ciphertext length: %w", err)
 		}
 
 		// Write the ciphertext
 		if _, err = outputFile.Write(ciphertext); err != nil {
-			return fmt.Errorf("failed to write ciphertext: %w", err)
+			return nil, fmt.Errorf("failed to write ciphertext: %w", err)
 		}
 
 		// If we read less than a full buffer, we've reached the end of the file
@@ -214,9 +215,15 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) error {
 		}
 	}
 
+	// Integrity check
 	inputFile.Close()
 	checksum := checksumHash.Sum(nil)
-	return checkIntegrity(ctx, outputFile, key, checksum)
+	err = checkIntegrity(ctx, outputFile, key, checksum)
+	if err != nil {
+		return nil, fmt.Errorf("integrity check failed: %w", err)
+	}
+
+	return checksum, nil
 }
 
 func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash []byte) error {
@@ -296,18 +303,18 @@ func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash 
 		}
 	}
 
-	// Calculate the MD5 hash of the decrypted file
+	// Calculate the SHA256 hash of the decrypted file
 	if _, err := decFile.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("failed to seek to start of decrypted file: %w", err)
 	}
-	calculatedMD5 := md5.New()
-	if _, err := io.Copy(calculatedMD5, decFile); err != nil {
-		return fmt.Errorf("failed to calculate MD5 of decrypted file: %w", err)
+	calculatedHash := sha256.New()
+	if _, err := io.Copy(calculatedHash, decFile); err != nil {
+		return fmt.Errorf("failed to calculate SHA256 of decrypted file: %w", err)
 	}
-	actualHash := calculatedMD5.Sum(nil)
+	actualHash := calculatedHash.Sum(nil)
 
 	if !bytes.Equal(actualHash, expectedHash) {
-		return fmt.Errorf("integrity check failed: expected MD5 %x, got %x", expectedHash, actualHash)
+		return fmt.Errorf("integrity check failed: expected SHA256 %x, got %x", expectedHash, actualHash)
 	}
 
 	return nil

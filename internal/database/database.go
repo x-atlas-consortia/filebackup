@@ -87,10 +87,26 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 		return nil, fmt.Errorf("error preparing statements: %w", err)
 	}
 
+	sha256Stmt, err := db.PrepareContext(ctx, `
+		SELECT sha256
+		FROM files
+		WHERE path = ? AND aws_version_id = ?
+		LIMIT 1
+	`)
+	if err != nil {
+		db.Close()
+		if lockFile != nil {
+			lockFile.Close()
+			os.Remove(lockFile.Name())
+		}
+		return nil, fmt.Errorf("error preparing statements: %w", err)
+	}
+
 	return &Database{
 		db:             db,
 		fileExistsStmt: fileExistsStmt,
 		lockFile:       lockFile,
+		sha256Stmt:     sha256Stmt,
 	}, nil
 }
 
@@ -127,6 +143,7 @@ type Database struct {
 	db             *sql.DB
 	fileExistsStmt *sql.Stmt
 	lockFile       *os.File
+	sha256Stmt     *sql.Stmt
 }
 
 // Close closes the database connection and releases the lock
@@ -156,6 +173,7 @@ type InsertFileItem struct {
 	AWSVersionID   string
 	LastModifiedAt int64
 	Path           string
+	SHA256         string
 	Size           int64
 }
 
@@ -166,8 +184,8 @@ func (d *Database) InsertFiles(ctx context.Context, files []InsertFileItem) erro
 	}
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO files (path, aws_version_id, size, last_modified_at)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO files (path, aws_version_id, sha256, size, last_modified_at)
+		VALUES (?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -176,7 +194,7 @@ func (d *Database) InsertFiles(ctx context.Context, files []InsertFileItem) erro
 	defer stmt.Close()
 
 	for _, file := range files {
-		if _, err := stmt.ExecContext(ctx, file.Path, file.AWSVersionID, file.Size, file.LastModifiedAt); err != nil {
+		if _, err := stmt.ExecContext(ctx, file.Path, file.AWSVersionID, file.SHA256, file.Size, file.LastModifiedAt); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("error inserting file (%s): %w", file.Path, err)
 		}
@@ -196,4 +214,17 @@ func (d *Database) DoesFileExist(ctx context.Context, path string, size, lastMod
 		return false, fmt.Errorf("error checking if file exists: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (d *Database) GetSHA256(ctx context.Context, path, awsVersionID string) (string, error) {
+	var sha256 string
+	err := d.sha256Stmt.QueryRowContext(ctx, path, awsVersionID).Scan(&sha256)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil // No rows found
+		}
+		return "", fmt.Errorf("error querying SHA-256: %w", err)
+	}
+
+	return sha256, nil
 }

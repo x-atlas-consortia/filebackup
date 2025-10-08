@@ -65,7 +65,7 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) err
 		go func(id int) {
 			defer processWg.Done()
 			workerLogger := logger.With(slog.String("worker", fmt.Sprintf("process_manifest_item_%d", id)))
-			processManifestItemWorker(ctx, workerLogger, config.EncryptionSecret, outDir, tempDir, manifestItemCh, downloader)
+			processManifestItemWorker(ctx, workerLogger, config.DatabasePath, config.EncryptionSecret, outDir, tempDir, manifestItemCh, downloader)
 		}(i)
 	}
 

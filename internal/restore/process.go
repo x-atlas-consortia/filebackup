@@ -1,11 +1,12 @@
 package restore
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -17,10 +18,23 @@ import (
 	"strings"
 
 	"github.com/tjmadonna/filebackup/internal/aws"
+	"github.com/tjmadonna/filebackup/internal/database"
 	"golang.org/x/crypto/argon2"
 )
 
-func processManifestItemWorker(ctx context.Context, logger *slog.Logger, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) {
+func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) {
+	// Read mode database
+	readOnlyDB, err := database.New(ctx, dbPath, true)
+	if err != nil {
+		logger.Error("Error opening database in read-only mode", slog.String("error", err.Error()))
+		return
+	}
+	defer func() {
+		if closeErr := readOnlyDB.Close(); closeErr != nil {
+			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
+		}
+	}()
+
 	for {
 		select {
 		case item, ok := <-itemCh:
@@ -31,7 +45,7 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, secret,
 			}
 
 			// Process the manifest item
-			err := processManifestItem(ctx, item, outDir, secret, tempDir, downloader)
+			err := processManifestItem(ctx, item, outDir, secret, tempDir, readOnlyDB, downloader)
 			if err != nil {
 				logger.Error("Error processing manifest item",
 					slog.String("bucket", item.Bucket),
@@ -47,7 +61,7 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, secret,
 	}
 }
 
-func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, secret, tempDir string, downloader *aws.AWSS3FileManager) error {
+func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, secret, tempDir string, db *database.Database, downloader *aws.AWSS3FileManager) error {
 	// Create a temporary file path to download the object, it will be encrypted
 	tmpFileName, err := generateRandomURLEncodedString(16)
 	if err != nil {
@@ -71,9 +85,19 @@ func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, sec
 	}
 
 	// Decrypt the file
-	_, err = decryptFile(ctx, tmpFilePath, outPath, secret)
+	checksum, err := decryptFile(ctx, tmpFilePath, outPath, secret)
 	if err != nil {
 		return fmt.Errorf("failed to decrypt file: %w", err)
+	}
+
+	// Verify checksum
+	dbChecksum, err := db.GetSHA256(ctx, item.Key, item.VersionID)
+	if err != nil || dbChecksum == "" {
+		return fmt.Errorf("failed to get checksum from database: %w", err)
+	}
+	if !bytes.Equal(checksum, []byte(dbChecksum)) {
+		os.Remove(outPath)
+		return fmt.Errorf("checksum mismatch for file %s (expected %x, got %x)", item.Key, dbChecksum, checksum)
 	}
 
 	return nil
@@ -108,8 +132,8 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 		return nil, fmt.Errorf("failed to create GCM: %w", err)
 	}
 
-	// Calculate the MD5 hash of the original file for integrity verification
-	checksumHash := md5.New()
+	// Calculate the SHA256 hash of the original file for integrity verification
+	checksumHash := sha256.New()
 
 	for {
 		// Check the context

@@ -16,12 +16,14 @@ CREATE TABLE IF NOT EXISTS files (
         aws_version_id GLOB '*[A-Za-z0-9_.-]*' AND
         aws_version_id NOT GLOB '*[^A-Za-z0-9_.-]*'
     ),  -- AWS version ID constraints
+    sha256 TEXT NOT NULL CHECK(length(sha256) = 64 AND sha256 GLOB '[0-9a-f]*'),  -- SHA-256 checksum validation
     size INTEGER NOT NULL CHECK(size >= 0),  -- No negative file sizes
     last_modified_at INTEGER NOT NULL CHECK(last_modified_at > 0),  -- Unix timestamp validation
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),  -- Track when record was created
     PRIMARY KEY (path, aws_version_id)
 );
 CREATE INDEX IF NOT EXISTS idx_files_path_size_last_modified_at ON files(path, size, last_modified_at);
+CREATE INDEX IF NOT EXISTS idx_files_path_aws_version_id ON files(path, aws_version_id);
 
 CREATE TABLE IF NOT EXISTS timestamps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
