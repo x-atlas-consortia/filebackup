@@ -1,6 +1,7 @@
 *.db
 config*.json
 !config.example.json
+*.manifest
 
 .DS_Store
 .idea/
