@@ -5,20 +5,16 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
-
-	"golang.org/x/crypto/argon2"
 
 	"github.com/tjmadonna/filebackup/internal/aws"
+	"github.com/tjmadonna/filebackup/internal/core"
 	"github.com/tjmadonna/filebackup/internal/database"
 )
 
@@ -80,7 +76,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	}
 
 	// Encrypt the file. Use a random filename in the temp directory
-	encFileName, err := generateRandomURLEncodedString(16)
+	encFileName, err := core.GenerateRandomURLEncodedString(16)
 	if err != nil {
 		return false, fmt.Errorf("failed to generate random filename for encryption: %w", err)
 	}
@@ -113,23 +109,16 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 	// 64GB Limit, NIST Special Publication 800-38D section 5.2.1.1)
 	// Limit in crypto library is 2**31 - 1 byte
 	chunkSize := 1 << 30 // 1GB
-	salt, err := generateRandomBytes(16)
+	salt, err := core.GenerateRandomBytes(16)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate salt: %w", err)
 	}
 
-	// Generate an encryption key and salt for each file
-	// The Argon2id variant with t=3 and 64 MiB memory is the SECOND RECOMMENDED option
-	// RFC 9106 Argon2 Memory-Hard Function for Password Hashing and Proof-of-Work Applications
-	// Use SECOND RECOMMENDED option since multiple goroutines are used in file processing (FIRST RECOMMENDED is 2 GiB memory)
-	key := argon2.IDKey([]byte(secret), salt, 3, 64*1024, uint8(runtime.NumCPU()), 32)
-	block, err := aes.NewCipher(key)
+	// Generate the encryption key
+	key := core.NewArgon2IDKey(secret, salt)
+	aesgcm, err := core.NewAESGCMCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
-	}
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
+		return nil, fmt.Errorf("failed to create AES-GCM cipher: %w", err)
 	}
 
 	// Open the input file for reading and the output file for writing
@@ -183,7 +172,7 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 		checksumHash.Write(buffer)
 
 		// Generate a unique nonce for each chunk
-		nonce, err := generateRandomBytes(aesgcm.NonceSize())
+		nonce, err := core.GenerateRandomBytes(aesgcm.NonceSize())
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate nonce: %w", err)
 		}
@@ -318,21 +307,4 @@ func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash 
 	}
 
 	return nil
-}
-
-func generateRandomBytes(n int) ([]byte, error) {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	return b, nil
-}
-
-func generateRandomURLEncodedString(n int) (string, error) {
-	b, err := generateRandomBytes(n)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
 }

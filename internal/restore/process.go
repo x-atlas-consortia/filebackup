@@ -3,23 +3,18 @@ package restore
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/tjmadonna/filebackup/internal/aws"
+	"github.com/tjmadonna/filebackup/internal/core"
 	"github.com/tjmadonna/filebackup/internal/database"
-	"golang.org/x/crypto/argon2"
 )
 
 func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) {
@@ -63,7 +58,7 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath,
 
 func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, secret, tempDir string, db *database.Database, downloader *aws.AWSS3FileManager) error {
 	// Create a temporary file path to download the object, it will be encrypted
-	tmpFileName, err := generateRandomURLEncodedString(16)
+	tmpFileName, err := core.GenerateRandomURLEncodedString(16)
 	if err != nil {
 		return fmt.Errorf("failed to generate random filename for download: %w", err)
 	}
@@ -122,14 +117,10 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 	if err != nil || n != 16 {
 		return nil, fmt.Errorf("failed to read salt from input file: %w", err)
 	}
-	key := argon2.IDKey([]byte(secret), salt, 3, 64*1024, uint8(runtime.NumCPU()), 32)
-	block, err := aes.NewCipher(key)
+	key := core.NewArgon2IDKey(secret, salt)
+	aesgcm, err := core.NewAESGCMCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
-	}
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
+		return nil, fmt.Errorf("failed to create AES-GCM cipher: %w", err)
 	}
 
 	// Calculate the SHA256 hash of the original file for integrity verification
@@ -186,21 +177,4 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 	}
 
 	return checksumHash.Sum(nil), nil
-}
-
-func generateRandomBytes(n int) ([]byte, error) {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	return b, nil
-}
-
-func generateRandomURLEncodedString(n int) (string, error) {
-	b, err := generateRandomBytes(n)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
 }
