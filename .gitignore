@@ -2,6 +2,8 @@
 config*.json
 !config.example.json
 *.manifest
+notes*
+bin/
 
 .DS_Store
 .idea/
