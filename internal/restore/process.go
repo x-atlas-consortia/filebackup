@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -90,24 +89,24 @@ func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, sec
 	if err != nil || dbChecksum == "" {
 		return fmt.Errorf("failed to get checksum from database: %w", err)
 	}
-	if !bytes.Equal(checksum, []byte(dbChecksum)) {
+	if checksum != dbChecksum {
 		os.Remove(outPath)
-		return fmt.Errorf("checksum mismatch for file %s (expected %x, got %x)", item.Key, dbChecksum, checksum)
+		return fmt.Errorf("checksum mismatch for file %s (expected %s, got %s)", item.Key, dbChecksum, checksum)
 	}
 
 	return nil
 }
 
-func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, error) {
+func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, error) {
 	inputFile, err := os.Open(inPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open input file for decryption: %w", err)
+		return "", fmt.Errorf("failed to open input file for decryption: %w", err)
 	}
 	defer inputFile.Close()
 
 	outputFile, err := os.Create(outPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create output file for decryption: %w", err)
+		return "", fmt.Errorf("failed to create output file for decryption: %w", err)
 	}
 	defer outputFile.Close()
 
@@ -115,12 +114,12 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 	salt := make([]byte, 16)
 	n, err := inputFile.Read(salt)
 	if err != nil || n != 16 {
-		return nil, fmt.Errorf("failed to read salt from input file: %w", err)
+		return "", fmt.Errorf("failed to read salt from input file: %w", err)
 	}
 	key := core.NewArgon2IDKey(secret, salt)
 	aesgcm, err := core.NewAESGCMCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AES-GCM cipher: %w", err)
+		return "", fmt.Errorf("failed to create AES-GCM cipher: %w", err)
 	}
 
 	// Calculate the SHA256 hash of the original file for integrity verification
@@ -130,7 +129,7 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 		// Check the context
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return "", ctx.Err()
 		default:
 		}
 
@@ -142,14 +141,14 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 				// Reached end of file
 				break
 			}
-			return nil, fmt.Errorf("failed to read nonce from input file: %w", err)
+			return "", fmt.Errorf("failed to read nonce from input file: %w", err)
 		}
 
 		// Read the length of the ciphertext
 		lenBuf := make([]byte, 8)
 		n, err = inputFile.Read(lenBuf)
 		if err != nil || n != len(lenBuf) {
-			return nil, fmt.Errorf("failed to read ciphertext length from input file: %w", err)
+			return "", fmt.Errorf("failed to read ciphertext length from input file: %w", err)
 		}
 		cypherLength := binary.LittleEndian.Uint64(lenBuf)
 
@@ -157,13 +156,13 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 		ciphertext := make([]byte, cypherLength)
 		n, err = inputFile.Read(ciphertext)
 		if err != nil || uint64(n) != cypherLength {
-			return nil, fmt.Errorf("failed to read ciphertext from input file: %w", err)
+			return "", fmt.Errorf("failed to read ciphertext from input file: %w", err)
 		}
 
 		// Decrypt the chunk
 		plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt chunk: %w", err)
+			return "", fmt.Errorf("failed to decrypt chunk: %w", err)
 		}
 
 		// Update the checksum
@@ -172,9 +171,9 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) ([]byte, e
 		// Write the plaintext to the output file
 		_, err = outputFile.Write(plaintext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write plaintext to output file: %w", err)
+			return "", fmt.Errorf("failed to write plaintext to output file: %w", err)
 		}
 	}
 
-	return checksumHash.Sum(nil), nil
+	return fmt.Sprintf("%x", checksumHash.Sum(nil)), nil
 }
