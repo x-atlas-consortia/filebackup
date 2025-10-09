@@ -9,16 +9,11 @@ PRAGMA cache_size=10000;        -- Larger cache for better performance
 PRAGMA integrity_check;
 
 CREATE TABLE IF NOT EXISTS files (
-    path TEXT NOT NULL CHECK(length(path) > 0 AND path NOT LIKE '% %'),  -- No empty paths or leading/trailing spaces
-    aws_version_id TEXT NOT NULL CHECK(
-        length(aws_version_id) >= 32 AND 
-        length(aws_version_id) <= 1024 AND
-        aws_version_id GLOB '*[A-Za-z0-9_.-]*' AND
-        aws_version_id NOT GLOB '*[^A-Za-z0-9_.-]*'
-    ),  -- AWS version ID constraints
+    path TEXT NOT NULL CHECK(length(path) > 0),  -- No empty paths
+    aws_version_id TEXT NOT NULL,
     sha256 TEXT NOT NULL CHECK(length(sha256) = 64 AND sha256 GLOB '[0-9a-f]*'),  -- SHA-256 checksum validation
     size INTEGER NOT NULL CHECK(size >= 0),  -- No negative file sizes
-    last_modified_at INTEGER NOT NULL CHECK(last_modified_at > 0),  -- Unix timestamp validation
+    last_modified_at INTEGER NOT NULL CHECK(last_modified_at > 0),  -- Valid Unix timestamp
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),  -- Track when record was created
     PRIMARY KEY (path, aws_version_id)
 );
