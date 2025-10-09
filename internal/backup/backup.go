@@ -18,7 +18,7 @@ func Backup(config core.Config) error {
 	startTime := time.Now()
 
 	// Setup logger
-	logger, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
+	logger, logWriter, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -109,7 +109,8 @@ func Backup(config core.Config) error {
 	dbInsertWg.Wait()
 	logger.Info("Database worker finished")
 
-	logger.Info("Backup process completed",
-		slog.String("duration", fmt.Sprintf("%.2f seconds", time.Since(startTime).Seconds())))
+	fmt.Fprintf(logWriter, `time=%s, msg="Backup process completed" duration=%.2f seconds\n`,
+		time.Now().Format(time.RFC3339), time.Since(startTime).Seconds())
+
 	return nil
 }

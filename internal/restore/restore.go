@@ -14,8 +14,10 @@ import (
 )
 
 func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) error {
+	startTime := time.Now()
+
 	// Setup logger
-	logger, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
+	logger, logWriter, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -83,7 +85,8 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) err
 	close(manifestItemCh)
 	processWg.Wait()
 
-	logger.Info("File restore process completed")
+	fmt.Fprintf(logWriter, `time=%s, msg="Restore process completed" duration=%.2f seconds\n`,
+		time.Now().Format(time.RFC3339), time.Since(startTime).Seconds())
 
 	return nil
 }
