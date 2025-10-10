@@ -334,3 +334,36 @@ func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int) ([
 
 	return files, nil
 }
+
+type GetVersionsResultItem struct {
+	LastModifiedAt int64
+	SHA256         string
+	Size           int64
+}
+
+func (d *Database) GetVersions(ctx context.Context, filePath string) ([]GetVersionsResultItem, error) {
+	rows, err := d.db.QueryContext(ctx, `
+		SELECT last_modified_at, size, sha256
+		FOM files
+		WHERE path = ?
+		ORDER BY started_at DESC
+	`, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("error querying versions: %w", err)
+	}
+	defer rows.Close()
+
+	var versions []GetVersionsResultItem
+	for rows.Next() {
+		var version GetVersionsResultItem
+		if err := rows.Scan(&version.LastModifiedAt, &version.Size, &version.SHA256); err != nil {
+			return nil, fmt.Errorf("error scanning version row: %w", err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over version rows: %w", err)
+	}
+
+	return versions, nil
+}
