@@ -18,7 +18,7 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details st
 	startTime := time.Now()
 
 	// Setup logger
-	logger, logWriter, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
+	logger, logWriter, err := core.NewLogger(config.LogDir, "restore", config.LogLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
