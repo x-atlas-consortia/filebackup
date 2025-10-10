@@ -262,3 +262,37 @@ func (d *Database) GetSHA256(ctx context.Context, path, awsVersionID string) (st
 
 	return sha256, nil
 }
+
+type GetBackupsResultItem struct {
+	Details   sql.NullString
+	EndedAt   int64
+	StartedAt int64
+}
+
+func (d *Database) GetBackups(ctx context.Context) ([]GetBackupsResultItem, error) {
+	rows, err := d.db.QueryContext(ctx, `
+		SELECT started_at, ended_at, details
+		FROM events
+		WHERE type = 'backup'
+		ORDER BY started_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("error querying backups: %w", err)
+	}
+	defer rows.Close()
+
+	var results []GetBackupsResultItem
+	for rows.Next() {
+		var item GetBackupsResultItem
+		if err := rows.Scan(&item.StartedAt, &item.EndedAt, &item.Details); err != nil {
+			return nil, fmt.Errorf("error scanning backup row: %w", err)
+		}
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over backup rows: %w", err)
+	}
+
+	return results, nil
+}
