@@ -296,3 +296,41 @@ func (d *Database) GetBackups(ctx context.Context) ([]GetBackupsResultItem, erro
 
 	return results, nil
 }
+
+type GetFilesResultItem struct {
+	Path           string
+	LastModifiedAt int64
+	Size           int64
+}
+
+func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int) ([]GetFilesResultItem, error) {
+	rows, err := d.db.QueryContext(ctx, `
+		SELECT path, size, last_modified_at
+		FROM files
+		WHERE (path, last_modified_at) IN (
+			SELECT path, MAX(last_modified_at)
+			FROM files
+			WHERE path LIKE ? AND last_modified_at <= ?
+			GROUP BY path
+		);
+	`, pathPrefix+"%", time)
+	if err != nil {
+		return nil, fmt.Errorf("error querying files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []GetFilesResultItem
+	for rows.Next() {
+		var file GetFilesResultItem
+		if err := rows.Scan(&file.Path, &file.Size, &file.LastModifiedAt); err != nil {
+			return nil, fmt.Errorf("error scanning file row: %w", err)
+		}
+		files = append(files, file)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over file rows: %w", err)
+	}
+
+	return files, nil
+}
