@@ -11,6 +11,7 @@ import (
 
 	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
 func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) error {
@@ -85,8 +86,43 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) err
 	close(manifestItemCh)
 	processWg.Wait()
 
+	// Insert restore event into the database
+	err = insertRestoreEvent(ctx, config.DatabasePath, "", startTime)
+	if err != nil {
+		logger.Error("Error inserting restore event", slog.String("error", err.Error()))
+		return err
+	}
+
 	fmt.Fprintf(logWriter, `time=%s, msg="Restore process completed" duration=%.2f seconds\n`,
 		time.Now().Format(time.RFC3339), time.Since(startTime).Seconds())
+
+	return nil
+}
+
+func insertRestoreEvent(ctx context.Context, dbPath, details string, startTime time.Time) error {
+	db, err := database.New(ctx, dbPath, false)
+	if err != nil {
+		return fmt.Errorf("error inserting event: %w", err)
+	}
+	defer db.Close()
+
+	// Insert the backup event
+	event := database.InsertEvent{
+		Details:   details,
+		EndedAt:   time.Now().UTC().Unix(),
+		StartedAt: startTime.UTC().Unix(),
+		Type:      "restore",
+	}
+	err = db.InsertEvent(ctx, event)
+	if err != nil {
+		return fmt.Errorf("error inserting event: %w", err)
+	}
+
+	// Reindex
+	err = db.Reindex(ctx)
+	if err != nil {
+		return fmt.Errorf("error reindexing database: %w", err)
+	}
 
 	return nil
 }

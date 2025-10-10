@@ -146,6 +146,14 @@ type Database struct {
 	sha256Stmt     *sql.Stmt
 }
 
+func (d *Database) Reindex(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `REINDEX`)
+	if err != nil {
+		return fmt.Errorf("error reindexing database: %w", err)
+	}
+	return nil
+}
+
 // Close closes the database connection and releases the lock
 func (d *Database) Close() error {
 	var dbErr, lockErr error
@@ -167,6 +175,32 @@ func (d *Database) Close() error {
 		return dbErr
 	}
 	return lockErr
+}
+
+type InsertEvent struct {
+	Details   string
+	EndedAt   int64
+	StartedAt int64
+	Type      string
+}
+
+func (d *Database) InsertEvent(ctx context.Context, event InsertEvent) error {
+	stmt := `INSERT INTO events (details, ended_at, started_at, type)
+	         VALUES (?, ?, ?, ?)`
+
+	var details any
+	if strings.TrimSpace(event.Details) == "" {
+		details = nil // Inserts NULL
+	} else {
+		details = event.Details
+	}
+
+	_, err := d.db.ExecContext(ctx, stmt, details, event.EndedAt, event.StartedAt, event.Type)
+	if err != nil {
+		return fmt.Errorf("error inserting event: %w", err)
+	}
+
+	return nil
 }
 
 type InsertFileItem struct {

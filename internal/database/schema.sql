@@ -20,13 +20,11 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_path_size_last_modified_at ON files(path, size, last_modified_at);
 CREATE INDEX IF NOT EXISTS idx_files_path_aws_version_id ON files(path, aws_version_id);
 
-CREATE TABLE IF NOT EXISTS timestamps (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL CHECK(timestamp > 0),  -- Valid Unix timestamp
-    event TEXT NOT NULL CHECK(event IN ('backup', 'restore')),  -- Restrict to known events
+CREATE TABLE IF NOT EXISTS events (
+    started_at INTEGER NOT NULL CHECK(started_at > 0) PRIMARY KEY,  -- Valid Unix timestamp
+    ended_at INTEGER CHECK(ended_at > 0),  -- Valid Unix timestamp
+    type TEXT NOT NULL CHECK(type IN ('backup', 'restore')),  -- Restrict to known event types
     details TEXT,  -- Optional field for additional context
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),  -- Track when record was created
-    UNIQUE(timestamp, event)  -- Prevent duplicate events at same timestamp
 );
-CREATE INDEX IF NOT EXISTS idx_timestamps_event ON timestamps(event);
-CREATE INDEX IF NOT EXISTS idx_timestamps_timestamp ON timestamps(timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_type ON timestamps(type);
