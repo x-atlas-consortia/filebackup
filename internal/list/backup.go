@@ -36,7 +36,7 @@ func ListBackups(config core.Config, outPath string) error {
 		}
 	}()
 
-	backups, err := readOnlyDB.GetBackups(ctx)
+	backups, err := readOnlyDB.GetEvents(ctx, "backup")
 	if err != nil {
 		logger.Error("Error retrieving backups from database", slog.String("error", err.Error()))
 		return nil
