@@ -7,13 +7,18 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
+	"github.com/x-atlas-consortia/filebackup/internal/list"
 	"github.com/x-atlas-consortia/filebackup/internal/restore"
 )
 
-// restoreCmd represents the restore subcommand
 var restoreCmd = &cobra.Command{
 	Use:   "restore",
-	Short: "Restore a backup of specified files and versions",
+	Short: "Restore operations",
+}
+
+var restoreStartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start a new restore",
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		// Validate manifest file path
 		manifestPath, err := cmd.Flags().GetString("manifest")
@@ -65,17 +70,40 @@ var restoreCmd = &cobra.Command{
 	},
 }
 
+var restoreListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List restores",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, ok := cmd.Context().Value("config").(core.Config)
+		if !ok {
+			panic("config not found in context")
+		}
+
+		outPath, err := cmd.Flags().GetString("out")
+		if err != nil {
+			return err
+		}
+
+		return list.ListRestores(config, outPath)
+	},
+}
+
 func init() {
+	restoreCmd.AddCommand(restoreStartCmd)
+	restoreCmd.AddCommand(restoreListCmd)
 	rootCmd.AddCommand(restoreCmd)
 
 	// Add manifest flag
-	restoreCmd.Flags().StringP("manifest", "m", "", "Path to the restore manifest file (required)")
-	restoreCmd.MarkFlagRequired("manifest")
+	restoreStartCmd.Flags().StringP("manifest", "m", "", "Path to the restore manifest file (required)")
+	restoreStartCmd.MarkFlagRequired("manifest")
 
 	// Add restore path
-	restoreCmd.Flags().StringP("out", "o", ".", "Path to the output directory where files will be restored (default is current directory)")
-	restoreCmd.MarkFlagRequired("out")
+	restoreStartCmd.Flags().StringP("out", "o", ".", "Path to the output directory where files will be restored (default is current directory)")
+	restoreStartCmd.MarkFlagRequired("out")
 
 	// Add details flag
-	restoreCmd.Flags().StringP("details", "d", "", "Details about the restore")
+	restoreStartCmd.Flags().StringP("details", "d", "", "Details about the restore")
+
+	// Add output file flag
+	restoreListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
 }
