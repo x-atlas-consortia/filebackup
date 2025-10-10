@@ -58,5 +58,4 @@ func init() {
 
 	// Add output file flag
 	backupListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
-	backupListCmd.MarkFlagFilename("out")
 }
