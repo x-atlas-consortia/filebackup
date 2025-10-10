@@ -14,7 +14,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) error {
+func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details string) error {
 	startTime := time.Now()
 
 	// Setup logger
@@ -87,7 +87,7 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir string) err
 	processWg.Wait()
 
 	// Insert restore event into the database
-	err = insertRestoreEvent(ctx, config.DatabasePath, "", startTime)
+	err = insertRestoreEvent(ctx, config.DatabasePath, details, startTime)
 	if err != nil {
 		logger.Error("Error inserting restore event", slog.String("error", err.Error()))
 		return err

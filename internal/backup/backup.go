@@ -14,7 +14,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func Backup(config core.Config) error {
+func Backup(config core.Config, details string) error {
 	startTime := time.Now()
 
 	// Setup logger
@@ -110,7 +110,7 @@ func Backup(config core.Config) error {
 	logger.Info("Database worker finished")
 
 	// Insert backup event into the database
-	err = insertBackupEvent(ctx, config.DatabasePath, "", startTime)
+	err = insertBackupEvent(ctx, config.DatabasePath, details, startTime)
 	if err != nil {
 		logger.Error("Error inserting backup event", slog.String("error", err.Error()))
 		return err

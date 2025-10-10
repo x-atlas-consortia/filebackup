@@ -21,7 +21,12 @@ var backupStartCmd = &cobra.Command{
 			panic("config not found in context")
 		}
 
-		return backup.Backup(config)
+		details, err := cmd.Flags().GetString("details")
+		if err != nil {
+			return err
+		}
+
+		return backup.Backup(config, details)
 	},
 }
 
@@ -48,6 +53,10 @@ func init() {
 	backupCmd.AddCommand(backupListCmd)
 	rootCmd.AddCommand(backupCmd)
 
+	// Add details flag
+	backupStartCmd.Flags().StringP("details", "d", "", "Details about the backup")
+
+	// Add output file flag
 	backupListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
 	backupListCmd.MarkFlagFilename("out")
 }

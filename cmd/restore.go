@@ -56,7 +56,12 @@ var restoreCmd = &cobra.Command{
 			panic("out directory not found in context")
 		}
 
-		return restore.Restore(config, manifest, outDir)
+		details, err := cmd.Flags().GetString("details")
+		if err != nil {
+			return err
+		}
+
+		return restore.Restore(config, manifest, outDir, details)
 	},
 }
 
@@ -70,4 +75,7 @@ func init() {
 	// Add restore path
 	restoreCmd.Flags().StringP("out", "o", ".", "Path to the output directory where files will be restored (default is current directory)")
 	restoreCmd.MarkFlagRequired("out")
+
+	// Add details flag
+	restoreCmd.Flags().StringP("details", "d", "", "Details about the restore")
 }
