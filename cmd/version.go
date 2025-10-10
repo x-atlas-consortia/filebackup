@@ -39,10 +39,10 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 
 	// Add output file flag
-	filesListCmd.Flags().StringP("path", "p", "", "Path of the file to list versions for")
-	filesListCmd.MarkFlagFilename("path")
+	versionListCmd.Flags().StringP("path", "p", "", "Path of the file to list versions for")
+	versionListCmd.MarkFlagFilename("path")
 
 	// Add output file flag
-	filesListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
-	filesListCmd.MarkFlagFilename("out")
+	versionListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
+	versionListCmd.MarkFlagFilename("out")
 }
