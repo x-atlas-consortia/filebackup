@@ -12,7 +12,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath string, timestamp time.Time) error {
+func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath string, timestamp time.Time, manifest bool) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("file-list", logLevel)
 	if err != nil {
@@ -68,15 +68,25 @@ func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath stri
 		return nil
 	} else {
 		for _, file := range files {
-			lastModifiedAt := time.Unix(file.LastModifiedAt, 0).UTC()
-
-			_, err := fmt.Fprintf(writer, "Path: %s, Size: %d bytes, LastModified At: %s UTC\n",
-				file.Path,
-				file.Size,
-				lastModifiedAt.Format("2006-01-02 15:04:05"))
-			if err != nil {
-				logger.Error("Error writing to output file", slog.String("error", err.Error()))
-				return err
+			if manifest {
+				_, err := fmt.Fprintf(writer, "%s,%s,%s\n",
+					config.AWSS3Bucket,
+					file.Path,
+					file.VersionID)
+				if err != nil {
+					logger.Error("Error writing to output file", slog.String("error", err.Error()))
+					return err
+				}
+			} else {
+				lastModifiedAt := time.Unix(file.LastModifiedAt, 0).UTC()
+				_, err := fmt.Fprintf(writer, "Path: %s, Size: %d bytes, LastModified At: %s UTC\n",
+					file.Path,
+					file.Size,
+					lastModifiedAt.Format("2006-01-02 15:04:05"))
+				if err != nil {
+					logger.Error("Error writing to output file", slog.String("error", err.Error()))
+					return err
+				}
 			}
 		}
 	}

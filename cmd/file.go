@@ -53,7 +53,12 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListFiles(config, logLevel, listPath, outPath, t)
+		manifest, err := cmd.Flags().GetBool("manifest")
+		if err != nil {
+			return err
+		}
+
+		return list.ListFiles(config, logLevel, listPath, outPath, t, manifest)
 	},
 }
 
@@ -72,4 +77,7 @@ func init() {
 
 	// time flag
 	filesListCmd.Flags().StringP("time", "t", "", "List files that existed at a specific time (ISO 8601 format i.e. 2025-10-13T15:04:05-04:00) (default: current time)")
+
+	// manifest flag
+	filesListCmd.Flags().BoolP("manifest", "m", false, "Generate a manifest formatted output (default: false)")
 }

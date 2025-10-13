@@ -298,14 +298,15 @@ func (d *Database) GetEvents(ctx context.Context, eventType string) ([]GetEvents
 }
 
 type GetFilesResultItem struct {
-	Path           string
 	LastModifiedAt int64
+	Path           string
 	Size           int64
+	VersionID      string
 }
 
 func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int) ([]GetFilesResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
-		SELECT path, size, last_modified_at
+		SELECT path, size, last_modified_at, version_id
 		FROM files
 		WHERE (path, last_modified_at) IN (
 			SELECT path, MAX(last_modified_at)
@@ -322,7 +323,7 @@ func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int) ([
 	var files []GetFilesResultItem
 	for rows.Next() {
 		var file GetFilesResultItem
-		if err := rows.Scan(&file.Path, &file.Size, &file.LastModifiedAt); err != nil {
+		if err := rows.Scan(&file.Path, &file.Size, &file.LastModifiedAt, &file.VersionID); err != nil {
 			return nil, fmt.Errorf("error scanning file row: %w", err)
 		}
 		files = append(files, file)
