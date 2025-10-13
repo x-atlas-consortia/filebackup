@@ -14,6 +14,11 @@ var rootCmd = &cobra.Command{
 	Use:   "filebackup",
 	Short: "FileBackup is a simple file backup tool",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Skip config check for init command
+		if cmd.CalledAs() == "init" {
+			return nil
+		}
+
 		exists := core.DoesConfigFileExist()
 		if !exists {
 			return errors.New("configuration file not found, please run 'filebackup init' to create one")
