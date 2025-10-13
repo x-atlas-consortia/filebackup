@@ -1,7 +1,9 @@
 package cmd
 
 import (
-	"errors"
+	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
@@ -15,11 +17,16 @@ var fileCmd = &cobra.Command{
 
 var filesListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List files",
+	Short: "List files at a given path",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, ok := cmd.Context().Value("config").(core.Config)
 		if !ok {
 			panic("config not found in context")
+		}
+
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
 		}
 
 		listPath, err := cmd.Flags().GetString("path")
@@ -27,12 +34,18 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
-		time, err := cmd.Flags().GetInt("time")
+		timeStr, err := cmd.Flags().GetString("time")
 		if err != nil {
 			return err
 		}
-		if time < 0 {
-			return errors.New("time must be a positive integer")
+		var t time.Time
+		if timeStr != "" {
+			t, err = time.Parse(time.RFC3339, timeStr)
+			if err != nil {
+				return fmt.Errorf("invalid time format: %w", err)
+			}
+		} else {
+			t = time.Now()
 		}
 
 		outPath, err := cmd.Flags().GetString("out")
@@ -40,7 +53,7 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListFiles(config, listPath, outPath, time)
+		return list.ListFiles(config, logLevel, listPath, outPath, t)
 	},
 }
 
@@ -48,15 +61,15 @@ func init() {
 	fileCmd.AddCommand(filesListCmd)
 	rootCmd.AddCommand(fileCmd)
 
-	// Add output file flag
-	filesListCmd.Flags().StringP("path", "p", "", "Path of the directory or file to list")
+	// Files list flags
+	// path flag
+	filesListCmd.Flags().StringP("path", "p", "", "Path of the directory to list files")
 	filesListCmd.MarkFlagDirname("path")
-	filesListCmd.MarkFlagFilename("path")
 
-	// Add output file flag
+	// out flag
 	filesListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
 	filesListCmd.MarkFlagFilename("out")
 
-	// Add time flag
-	filesListCmd.Flags().IntP("time", "t", 0, "Time format (Unix timestamp)")
+	// time flag
+	filesListCmd.Flags().StringP("time", "t", "", "List files that existed at a specific time (ISO 8601 format i.e. 2025-10-13T15:04:05-04:00) (default: current time)")
 }

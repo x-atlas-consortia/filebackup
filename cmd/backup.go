@@ -1,6 +1,11 @@
 package cmd
 
 import (
+	"errors"
+	"log/slog"
+	"os"
+	"runtime"
+
 	"github.com/spf13/cobra"
 	"github.com/x-atlas-consortia/filebackup/internal/backup"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
@@ -21,12 +26,44 @@ var backupStartCmd = &cobra.Command{
 			panic("config not found in context")
 		}
 
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
+		}
+
+		directories, err := cmd.Flags().GetStringSlice("directories")
+		if err != nil {
+			return err
+		}
+		if len(directories) < 1 {
+			return errors.New("at least one directory must be specified")
+		}
+
 		details, err := cmd.Flags().GetString("details")
 		if err != nil {
 			return err
 		}
 
-		return backup.Backup(config, details)
+		tempDir, err := cmd.Flags().GetString("temp-dir")
+		if err != nil {
+			return err
+		}
+		if stat, err := os.Stat(tempDir); err != nil || !stat.IsDir() {
+			return errors.New("temp-dir must be a valid directory")
+		}
+
+		maxWorkers, err := cmd.Flags().GetInt("max-workers")
+		if err != nil {
+			return err
+		}
+		if maxWorkers < 2 {
+			return errors.New("max-workers must be at least 2")
+		}
+		if maxWorkers > runtime.NumCPU() {
+			return errors.New("max-workers cannot be greater than the number of CPU cores")
+		}
+
+		return backup.Backup(config, logLevel, details, tempDir, directories, maxWorkers)
 	},
 }
 
@@ -39,12 +76,17 @@ var backupListCmd = &cobra.Command{
 			panic("config not found in context")
 		}
 
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
+		}
+
 		outPath, err := cmd.Flags().GetString("out")
 		if err != nil {
 			return err
 		}
 
-		return list.ListBackups(config, outPath)
+		return list.ListBackups(config, logLevel, outPath)
 	},
 }
 
@@ -53,10 +95,24 @@ func init() {
 	backupCmd.AddCommand(backupListCmd)
 	rootCmd.AddCommand(backupCmd)
 
-	// Add details flag
+	// Backup start flags
+	// directories flag
+	backupStartCmd.Flags().StringSliceP("directories", "D", []string{}, "List of directories to back up (multiple -D flags allowed or comma-separated string)")
+	backupStartCmd.MarkFlagRequired("directories")
+	backupStartCmd.MarkFlagDirname("directories")
+
+	// details flag
 	backupStartCmd.Flags().StringP("details", "d", "", "Details about the backup")
 
-	// Add output file flag
+	// temp-dir flag
+	backupStartCmd.Flags().StringP("temp-dir", "t", os.TempDir(), "Path to the temporary directory")
+	backupStartCmd.MarkFlagDirname("temp-dir")
+
+	// max-workers flag
+	backupStartCmd.Flags().IntP("max-workers", "w", 4, "Maximum number of concurrent workers")
+
+	// Backup list flags
+	// out flag
 	backupListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
-	backupCmd.MarkFlagFilename("out")
+	backupListCmd.MarkFlagFilename("out")
 }

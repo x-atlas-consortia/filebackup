@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"log/slog"
+
 	"github.com/spf13/cobra"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 	"github.com/x-atlas-consortia/filebackup/internal/list"
@@ -20,6 +22,11 @@ var versionListCmd = &cobra.Command{
 			panic("config not found in context")
 		}
 
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
+		}
+
 		listPath, err := cmd.Flags().GetString("path")
 		if err != nil {
 			return err
@@ -30,7 +37,7 @@ var versionListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListVersions(config, listPath, outPath)
+		return list.ListVersions(config, logLevel, listPath, outPath)
 	},
 }
 
@@ -38,11 +45,13 @@ func init() {
 	versionCmd.AddCommand(versionListCmd)
 	rootCmd.AddCommand(versionCmd)
 
-	// Add output file flag
+	// Versions list flags
+	// path flag
 	versionListCmd.Flags().StringP("path", "p", "", "Path of the file to list versions for")
+	versionListCmd.MarkFlagRequired("path")
 	versionListCmd.MarkFlagFilename("path")
 
-	// Add output file flag
+	// out flag
 	versionListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
 	versionListCmd.MarkFlagFilename("out")
 }

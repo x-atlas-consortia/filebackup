@@ -3,62 +3,108 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
+const configPath = "$HOME/.config/filebackup/config.json"
+const databasePath = "$HOME/.local/share/filebackup/filebackup.db"
+
+func GetDatabasePath() string {
+	return os.ExpandEnv(databasePath)
+}
+
 type Config struct {
-	AWSAccessKeyID     string
-	AWSRegion          string
-	AWSS3Bucket        string
-	AWSSecretAccessKey string
-	DatabasePath       string
-	Directories        []string
-	EncryptionSecret   string
-	LogDir             string
-	LogLevel           slog.Leveler
-	MaxWorkers         int
-	TempDir            string
+	AWSAccessKeyID     string `json:"aws_access_key_id"`
+	AWSRegion          string `json:"aws_region"`
+	AWSS3Bucket        string `json:"aws_s3_bucket"`
+	AWSSecretAccessKey string `json:"aws_secret_access_key"`
+	EncryptionSecret   string `json:"encryption_secret"`
 }
 
-type rawConfig struct {
-	AWSAccessKeyID     string   `json:"aws_access_key_id"`
-	AWSRegion          string   `json:"aws_region"`
-	AWSS3Bucket        string   `json:"aws_s3_bucket"`
-	AWSSecretAccessKey string   `json:"aws_secret_access_key"`
-	DatabasePath       string   `json:"database_path"`
-	Directories        []string `json:"directories"`
-	EncryptionSecret   string   `json:"encryption_secret"`
-	LogDir             string   `json:"log_dir"`
-	LogLevel           string   `json:"log_level"`
-	MaxWorkers         int      `json:"max_workers"`
-	TempDir            string   `json:"temp_dir"`
-}
+func SaveConfigFile(config Config) error {
+	// Save to a config file
+	configPath := os.ExpandEnv(configPath)
+	configDir := filepath.Dir(configPath)
+	err := os.MkdirAll(configDir, 0700)
+	if err != nil {
+		return err
+	}
+	configFile, err := os.Create(configPath)
+	if err != nil {
+		return err
+	}
+	defer configFile.Close()
 
-func ParseConfigFile(path string) (Config, error) {
-	// Check if the file exists
-	if _, err := os.Stat(path); err != nil {
-		return Config{}, err
+	// save json to configFile
+	encoder := json.NewEncoder(configFile)
+	encoder.SetIndent("", "  ")
+	err = encoder.Encode(config)
+	if err != nil {
+		return fmt.Errorf("failed to write config to file: %w", err)
 	}
 
-	// Read file
-	data, err := os.ReadFile(path)
+	// Create the database directory if it doesn't exist
+	databasePath := os.ExpandEnv(databasePath)
+	databaseDir := filepath.Dir(databasePath)
+	err = os.MkdirAll(databaseDir, 0700)
+	if err != nil {
+		return err
+	}
+
+	// Backup existing database file if it exists
+	if _, err := os.Stat(databasePath); err == nil {
+		backupDatabaseName := fmt.Sprintf("filebackup-%s.log", time.Now().UTC().Format("2006-01-02-15-04-05"))
+		backupDatabasePath := filepath.Join(databaseDir, backupDatabaseName)
+		err = os.Rename(databasePath, backupDatabasePath)
+		if err != nil {
+			return fmt.Errorf("failed to backup existing database file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func DoesConfigFileExist() bool {
+	configPath := os.ExpandEnv(configPath)
+	if _, err := os.Stat(configPath); err == nil {
+		return true
+	}
+	return false
+}
+
+func ParseConfigFile() (Config, error) {
+	// Check if the file exists
+	if !DoesConfigFileExist() {
+		return Config{}, fmt.Errorf("config file does not exist at path: %s", os.ExpandEnv(configPath))
+	}
+
+	// Read the file
+	configPath := os.ExpandEnv(configPath)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return Config{}, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse JSON
-	var rawConfig rawConfig
-	if err := json.Unmarshal(data, &rawConfig); err != nil {
-		return Config{}, fmt.Errorf("failed to parse JSON config: %w", err)
+	// Parse config file
+	var config Config
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	// Validate config
-	return validateConfig(rawConfig)
+	err = validateConfig(config)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid config file: %w", err)
+	}
+
+	return config, nil
 }
 
-func validateConfig(config rawConfig) (Config, error) {
+func validateConfig(config Config) error {
 	var errs []string
 
 	if len(config.AWSAccessKeyID) < 1 {
@@ -77,73 +123,13 @@ func validateConfig(config rawConfig) (Config, error) {
 		errs = append(errs, fmt.Sprintf("invalid aws_secret_access_key: %s", config.AWSSecretAccessKey))
 	}
 
-	if config.DatabasePath == "" {
-		errs = append(errs, fmt.Sprintf("invalid database_path: %s", config.DatabasePath))
-	}
-
-	if len(config.Directories) > 0 {
-		for i, dir := range config.Directories {
-			if dir == "" {
-				errs = append(errs, fmt.Sprintf("invalid directories entry: empty string at position %d", i))
-				continue
-			}
-			if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
-				errs = append(errs, fmt.Sprintf("invalid directories entry: not a directory: %s", dir))
-			}
-		}
-	} else {
-		errs = append(errs, "no directories specified")
-	}
-
 	if len(config.EncryptionSecret) < 32 {
 		errs = append(errs, "encryption_secret must be at least 32 characters")
 	}
 
-	if stat, err := os.Stat(config.LogDir); err != nil || !stat.IsDir() {
-		errs = append(errs, fmt.Sprintf("invalid log_dir: %s", config.LogDir))
-	}
-
-	var logLevel slog.Level
-	if llStr := config.LogLevel; llStr != "" {
-		switch strings.ToLower(llStr) {
-		case "debug":
-			logLevel = slog.LevelDebug
-		case "info":
-			logLevel = slog.LevelInfo
-		case "warn":
-			logLevel = slog.LevelWarn
-		case "error":
-			logLevel = slog.LevelError
-		default:
-			errs = append(errs, fmt.Sprintf("invalid log_level: %s", llStr))
-		}
-	}
-
-	if config.MaxWorkers < 1 {
-		errs = append(errs, fmt.Sprintf("max_workers must be at least 1: %d", config.MaxWorkers))
-	}
-
-	if config.TempDir == "" {
-		errs = append(errs, "invalid temp_dir: cannot be empty")
-	} else if stat, err := os.Stat(config.TempDir); err != nil || !stat.IsDir() {
-		errs = append(errs, fmt.Sprintf("invalid temp_dir: %s", config.TempDir))
-	}
-
 	if len(errs) > 0 {
-		return Config{}, fmt.Errorf("errors in environment file: %s", strings.Join(errs, ", "))
+		return fmt.Errorf("errors in environment file: %s", strings.Join(errs, ", "))
 	}
 
-	return Config{
-		AWSAccessKeyID:     config.AWSAccessKeyID,
-		AWSRegion:          config.AWSRegion,
-		AWSS3Bucket:        config.AWSS3Bucket,
-		AWSSecretAccessKey: config.AWSSecretAccessKey,
-		DatabasePath:       config.DatabasePath,
-		Directories:        config.Directories,
-		EncryptionSecret:   config.EncryptionSecret,
-		LogDir:             config.LogDir,
-		LogLevel:           logLevel,
-		MaxWorkers:         config.MaxWorkers,
-		TempDir:            config.TempDir,
-	}, nil
+	return nil
 }

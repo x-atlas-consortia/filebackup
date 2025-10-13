@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"errors"
+	"log/slog"
 	"os"
+	"runtime"
 
 	"github.com/spf13/cobra"
 	"github.com/x-atlas-consortia/filebackup/internal/aws"
@@ -22,6 +25,11 @@ var restoreStartCmd = &cobra.Command{
 		config, ok := cmd.Context().Value("config").(core.Config)
 		if !ok {
 			panic("config not found in context")
+		}
+
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
 		}
 
 		// Validate manifest file path
@@ -48,7 +56,26 @@ var restoreStartCmd = &cobra.Command{
 			return err
 		}
 
-		return restore.Restore(config, manifest, outDir, details)
+		tempDir, err := cmd.Flags().GetString("temp-dir")
+		if err != nil {
+			return err
+		}
+		if stat, err := os.Stat(tempDir); err != nil || !stat.IsDir() {
+			return errors.New("temp-dir must be a valid directory")
+		}
+
+		maxWorkers, err := cmd.Flags().GetInt("max-workers")
+		if err != nil {
+			return err
+		}
+		if maxWorkers < 1 {
+			return errors.New("max-workers must be at least 1")
+		}
+		if maxWorkers > runtime.NumCPU() {
+			return errors.New("max-workers cannot be greater than the number of CPU cores")
+		}
+
+		return restore.Restore(config, logLevel, manifest, outDir, details, tempDir, maxWorkers)
 	},
 }
 
@@ -61,12 +88,17 @@ var restoreListCmd = &cobra.Command{
 			panic("config not found in context")
 		}
 
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
+		}
+
 		outPath, err := cmd.Flags().GetString("out")
 		if err != nil {
 			return err
 		}
 
-		return list.ListRestores(config, outPath)
+		return list.ListRestores(config, logLevel, outPath)
 	},
 }
 
@@ -75,19 +107,28 @@ func init() {
 	restoreCmd.AddCommand(restoreListCmd)
 	rootCmd.AddCommand(restoreCmd)
 
-	// Add manifest flag
+	// Restore start flags
+	// manifest flag
 	restoreStartCmd.Flags().StringP("manifest", "m", "", "Path to the restore manifest file (required)")
 	restoreStartCmd.MarkFlagRequired("manifest")
 	restoreStartCmd.MarkFlagFilename("manifest")
 
-	// Add restore path
+	// out flag
 	restoreStartCmd.Flags().StringP("out", "o", ".", "Path to the output directory where files will be restored (default is current directory)")
 	restoreStartCmd.MarkFlagRequired("out")
 	restoreStartCmd.MarkFlagDirname("out")
 
-	// Add details flag
+	// details flag
 	restoreStartCmd.Flags().StringP("details", "d", "", "Details about the restore")
 
+	// temp-dir flag
+	restoreStartCmd.Flags().StringP("temp-dir", "t", os.TempDir(), "Path to the temporary directory")
+	restoreStartCmd.MarkFlagDirname("temp-dir")
+
+	// max-workers flag
+	restoreStartCmd.Flags().IntP("max-workers", "w", 4, "Maximum number of concurrent workers")
+
+	// Restore list flags
 	// Add output file flag
 	restoreListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
 	restoreListCmd.MarkFlagFilename("out")

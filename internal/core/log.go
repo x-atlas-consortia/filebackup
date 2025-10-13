@@ -9,10 +9,19 @@ import (
 	"time"
 )
 
-func NewLogger(dir, cmd string, level slog.Leveler) (*slog.Logger, io.Writer, error) {
+const logDirectory = "$HOME/.config/filebackup/logs"
+
+func NewLogger(cmd string, level slog.Leveler) (*slog.Logger, io.Writer, error) {
+	// Ensure log directory exists
+	logDir := os.ExpandEnv(logDirectory)
+	err := os.MkdirAll(logDir, 0700)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
 	// Format filename as fileback-YYYY-MM-DD-HH-MM-SS.log
-	logFileName := fmt.Sprintf("fileback-%s-%s.log", cmd, time.Now().UTC().Format("2006-01-02-15-04-05"))
-	logFilePath := filepath.Join(dir, logFileName)
+	logFileName := fmt.Sprintf("filebackup-%s-%s.log", cmd, time.Now().UTC().Format("2006-01-02-15-04-05"))
+	logFilePath := filepath.Join(logDir, logFileName)
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create log file: %w", err)
@@ -28,4 +37,19 @@ func NewLogger(dir, cmd string, level slog.Leveler) (*slog.Logger, io.Writer, er
 	logger := slog.New(handler)
 
 	return logger, multiWriter, nil
+}
+
+func ParseLogLevel(levelStr string) (slog.Leveler, error) {
+	switch levelStr {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return nil, fmt.Errorf("invalid log level: %s", levelStr)
+	}
 }

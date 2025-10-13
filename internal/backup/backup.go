@@ -14,11 +14,11 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func Backup(config core.Config, details string) error {
+func Backup(config core.Config, logLevel slog.Leveler, details, tempDir string, directories []string, maxWorkers int) error {
 	startTime := time.Now()
 
 	// Setup logger
-	logger, logWriter, err := core.NewLogger(config.LogDir, "backup", config.LogLevel)
+	logger, logWriter, err := core.NewLogger("backup-start", logLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -30,17 +30,19 @@ func Backup(config core.Config, details string) error {
 
 	// Create a temp directory
 	tempDirName := fmt.Sprintf("filebackup-backup-%s.log", time.Now().UTC().Format("2006-01-02-15-04-05"))
-	tempDir := filepath.Join(config.TempDir, tempDirName)
+	tempDir = filepath.Join(tempDir, tempDirName)
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
 		logger.Error("Failed to create temp directory", slog.String("temp_dir", tempDir), slog.String("error", err.Error()))
 		return err
 	}
 	defer os.RemoveAll(tempDir)
 
+	dbPath := core.GetDatabasePath()
+
 	logger.Info("Starting file backup process",
-		slog.Int("directories", len(config.Directories)),
-		slog.Int("workers", config.MaxWorkers),
-		slog.String("database", config.DatabasePath))
+		slog.Int("directories", len(directories)),
+		slog.Int("workers", maxWorkers),
+		slog.String("database", dbPath))
 
 	// Initialize the s3 file manager
 	awsConfig := aws.Config{
@@ -61,7 +63,7 @@ func Backup(config core.Config, details string) error {
 	var dbInsertWg sync.WaitGroup
 
 	dbInsertWg.Go(func() {
-		databaseFileInsertWorker(ctx, logger, config.DatabasePath, fileInsertCh, dbReady)
+		databaseFileInsertWorker(ctx, logger, dbPath, fileInsertCh, dbReady)
 	})
 
 	if err := <-dbReady; err != nil {
@@ -73,7 +75,7 @@ func Backup(config core.Config, details string) error {
 	logger.Info("Database insert worker ready")
 
 	// Create channels and wait group for process workers
-	processWorkerCount := config.MaxWorkers - 1 // Reserve one worker for db insert
+	processWorkerCount := maxWorkers - 1        // Reserve one worker for db insert
 	filesToProcessCh := make(chan string, 1000) // Buffer for file paths
 	var processWg sync.WaitGroup
 
@@ -84,13 +86,13 @@ func Backup(config core.Config, details string) error {
 		go func(id int) {
 			defer processWg.Done()
 			workerLogger := logger.With(slog.String("worker", fmt.Sprintf("process_file_%d", id)))
-			processFileWorker(ctx, workerLogger, config.DatabasePath, config.EncryptionSecret, tempDir, filesToProcessCh, uploader, fileInsertCh)
+			processFileWorker(ctx, workerLogger, dbPath, config.EncryptionSecret, tempDir, filesToProcessCh, uploader, fileInsertCh)
 		}(i)
 	}
 
 	// Walk files (blocks until complete)
 	logger.Info("Starting file walking")
-	walkFiles(ctx, logger, config.Directories, filesToProcessCh)
+	walkFiles(ctx, logger, directories, filesToProcessCh)
 	logger.Info("File walking completed, closing file channel")
 
 	// Close the files channel to signal process workers no more files are coming
@@ -110,7 +112,7 @@ func Backup(config core.Config, details string) error {
 	logger.Info("Database worker finished")
 
 	// Insert backup event into the database
-	err = insertBackupEvent(ctx, config.DatabasePath, details, startTime)
+	err = insertBackupEvent(ctx, dbPath, details, startTime)
 	if err != nil {
 		logger.Error("Error inserting backup event", slog.String("error", err.Error()))
 		return err

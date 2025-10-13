@@ -14,11 +14,11 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details string) error {
+func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir string, maxWorkers int) error {
 	startTime := time.Now()
 
 	// Setup logger
-	logger, logWriter, err := core.NewLogger(config.LogDir, "restore", config.LogLevel)
+	logger, logWriter, err := core.NewLogger("restore-start", logLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -30,17 +30,19 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details st
 
 	// Create a temp directory
 	tempDirName := fmt.Sprintf("filebackup-restore-%s.log", time.Now().UTC().Format("2006-01-02-15-04-05"))
-	tempDir := filepath.Join(config.TempDir, tempDirName)
+	tempDir = filepath.Join(tempDir, tempDirName)
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
 		logger.Error("Failed to create temp directory", slog.String("temp_dir", tempDir), slog.String("error", err.Error()))
 		return err
 	}
 	defer os.RemoveAll(tempDir)
 
+	dbPath := core.GetDatabasePath()
+
 	logger.Info("Starting file restore process",
 		slog.Int("files", len(manifest)),
 		slog.String("output_directory", outDir),
-		slog.String("database", config.DatabasePath))
+		slog.String("database", dbPath))
 
 	// Initialize the s3 file downloader
 	awsConfig := aws.Config{
@@ -58,7 +60,7 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details st
 	// Create channel
 	chSize := min(1000, len(manifest))
 	manifestItemCh := make(chan aws.ManifestItem, chSize)
-	processWorkerCount := config.MaxWorkers
+	processWorkerCount := maxWorkers
 	var processWg sync.WaitGroup
 
 	// Start file processing workers
@@ -68,7 +70,7 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details st
 		go func(id int) {
 			defer processWg.Done()
 			workerLogger := logger.With(slog.String("worker", fmt.Sprintf("process_manifest_item_%d", id)))
-			processManifestItemWorker(ctx, workerLogger, config.DatabasePath, config.EncryptionSecret, outDir, tempDir, manifestItemCh, downloader)
+			processManifestItemWorker(ctx, workerLogger, dbPath, config.EncryptionSecret, outDir, tempDir, manifestItemCh, downloader)
 		}(i)
 	}
 
@@ -87,7 +89,7 @@ func Restore(config core.Config, manifest []aws.ManifestItem, outDir, details st
 	processWg.Wait()
 
 	// Insert restore event into the database
-	err = insertRestoreEvent(ctx, config.DatabasePath, details, startTime)
+	err = insertRestoreEvent(ctx, dbPath, details, startTime)
 	if err != nil {
 		logger.Error("Error inserting restore event", slog.String("error", err.Error()))
 		return err

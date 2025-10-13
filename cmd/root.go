@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -13,18 +14,28 @@ var rootCmd = &cobra.Command{
 	Use:   "filebackup",
 	Short: "FileBackup is a simple file backup tool",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// validate config file path
-		configPath, err := cmd.Flags().GetString("config")
+		exists := core.DoesConfigFileExist()
+		if !exists {
+			return errors.New("configuration file not found, please run 'filebackup init' to create one")
+		}
+
+		config, err := core.ParseConfigFile()
+		if err != nil {
+			return errors.New("failed to parse configuration file, please run 'filebackup init' to recreate it")
+		}
+
+		logLevelStr, err := cmd.Flags().GetString("log-level")
 		if err != nil {
 			return err
 		}
 
-		config, err := core.ParseConfigFile(configPath)
+		logLevel, err := core.ParseLogLevel(logLevelStr)
 		if err != nil {
 			return err
 		}
 
 		cmd.SetContext(context.WithValue(cmd.Context(), "config", config))
+		cmd.SetContext(context.WithValue(cmd.Context(), "log-level", logLevel))
 
 		return nil
 	},
@@ -41,6 +52,5 @@ func Execute() {
 
 // Initialize persistent flags
 func init() {
-	rootCmd.PersistentFlags().StringP("config", "c", "./config.json", "Path to the configuration file (required)")
-	rootCmd.MarkPersistentFlagRequired("config")
+	rootCmd.PersistentFlags().StringP("log-level", "l", "info", "Set the log level (debug, info, warn, error)")
 }

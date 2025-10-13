@@ -12,9 +12,9 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func ListFiles(config core.Config, listPath, outPath string, timestamp int) error {
+func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath string, timestamp time.Time) error {
 	// Setup logger
-	logger, _, err := core.NewLogger(config.LogDir, "file", config.LogLevel)
+	logger, _, err := core.NewLogger("file-list", logLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -25,7 +25,8 @@ func ListFiles(config core.Config, listPath, outPath string, timestamp int) erro
 	defer cancel()
 
 	// Read mode database
-	readOnlyDB, err := database.New(ctx, config.DatabasePath, true)
+	dbPath := core.GetDatabasePath()
+	readOnlyDB, err := database.New(ctx, dbPath, true)
 	if err != nil {
 		logger.Error("Error opening database in read-only mode", slog.String("error", err.Error()))
 		return nil
@@ -37,7 +38,7 @@ func ListFiles(config core.Config, listPath, outPath string, timestamp int) erro
 	}()
 
 	// Get files
-	files, err := readOnlyDB.GetFiles(ctx, listPath, timestamp)
+	files, err := readOnlyDB.GetFiles(ctx, listPath, int(timestamp.UTC().Unix()))
 	if err != nil {
 		logger.Error("Error retrieving files from database", slog.String("error", err.Error()))
 		return nil
