@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS idx_files_path_size_last_modified_at ON files(path, size, last_modified_at);
 CREATE INDEX IF NOT EXISTS idx_files_path_aws_version_id ON files(path, aws_version_id);
+CREATE INDEX IF NOT EXISTS idx_files_path_last_modified_at ON files(path, last_modified_at DESC);
 
 CREATE TABLE IF NOT EXISTS events (
     started_at INTEGER NOT NULL CHECK(started_at > 0) PRIMARY KEY,  -- Valid Unix timestamp

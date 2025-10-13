@@ -304,9 +304,9 @@ type GetFilesResultItem struct {
 	VersionID      string
 }
 
-func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int) ([]GetFilesResultItem, error) {
+func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) ([]GetFilesResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
-		SELECT path, size, last_modified_at, version_id
+		SELECT path, size, last_modified_at, aws_version_id
 		FROM files
 		WHERE (path, last_modified_at) IN (
 			SELECT path, MAX(last_modified_at)
@@ -345,9 +345,9 @@ type GetVersionsResultItem struct {
 func (d *Database) GetVersions(ctx context.Context, filePath string) ([]GetVersionsResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
 		SELECT last_modified_at, size, sha256
-		FOM files
+		FROM files
 		WHERE path = ?
-		ORDER BY started_at DESC
+		ORDER BY last_modified_at DESC
 	`, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("error querying versions: %w", err)

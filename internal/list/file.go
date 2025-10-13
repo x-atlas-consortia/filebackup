@@ -38,7 +38,7 @@ func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath stri
 	}()
 
 	// Get files
-	files, err := readOnlyDB.GetFiles(ctx, listPath, int(timestamp.UTC().Unix()))
+	files, err := readOnlyDB.GetFiles(ctx, listPath, timestamp.UTC().Unix())
 	if err != nil {
 		logger.Error("Error retrieving files from database", slog.String("error", err.Error()))
 		return nil
