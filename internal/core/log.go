@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const logDirectory = "$HOME/.config/filebackup/logs"
+const logDirectory = "$HOME/.local/share/filebackup/logs"
 
 func NewLogger(cmd string, level slog.Leveler) (*slog.Logger, io.Writer, error) {
 	// Ensure log directory exists
