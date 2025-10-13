@@ -99,7 +99,6 @@ func init() {
 	// directories flag
 	backupStartCmd.Flags().StringSliceP("directories", "D", []string{}, "List of directories to back up (multiple -D flags allowed or comma-separated string)")
 	backupStartCmd.MarkFlagRequired("directories")
-	backupStartCmd.MarkFlagDirname("directories")
 
 	// details flag
 	backupStartCmd.Flags().StringP("details", "d", "", "Details about the backup")
@@ -109,7 +108,7 @@ func init() {
 	backupStartCmd.MarkFlagDirname("temp-dir")
 
 	// max-workers flag
-	backupStartCmd.Flags().IntP("max-workers", "w", 4, "Maximum number of concurrent workers")
+	backupStartCmd.Flags().IntP("max-workers", "w", 4, "Maximum number of concurrent workers (default: 4)")
 
 	// Backup list flags
 	// out flag
