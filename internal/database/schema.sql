@@ -25,6 +25,6 @@ CREATE TABLE IF NOT EXISTS events (
     ended_at INTEGER CHECK(ended_at > 0),  -- Valid Unix timestamp
     type TEXT NOT NULL CHECK(type IN ('backup', 'restore')),  -- Restrict to known event types
     details TEXT,  -- Optional field for additional context
-    created_at INTEGER NOT NULL DEFAULT (unixepoch()),  -- Track when record was created
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())  -- Track when record was created
 );
-CREATE INDEX IF NOT EXISTS idx_events_type ON timestamps(type);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
