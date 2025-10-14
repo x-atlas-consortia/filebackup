@@ -29,6 +29,11 @@ var filesListCmd = &cobra.Command{
 			panic("log-level not found in context")
 		}
 
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
 		listPath, err := cmd.Flags().GetString("path")
 		if err != nil {
 			return err
@@ -58,7 +63,7 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListFiles(config, logLevel, listPath, outPath, t, manifest)
+		return list.ListFiles(config, logLevel, listPath, outPath, profile, t, manifest)
 	},
 }
 

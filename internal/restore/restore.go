@@ -14,11 +14,11 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir string, maxWorkers int) error {
+func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir, profile string, maxWorkers int) error {
 	startTime := time.Now()
 
 	// Setup logger
-	logger, logWriter, err := core.NewLogger("restore-start", logLevel)
+	logger, logWriter, err := core.NewLogger("restore-start", profile, logLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -37,7 +37,7 @@ func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestI
 	}
 	defer os.RemoveAll(tempDir)
 
-	dbPath := core.GetDatabasePath()
+	dbPath := core.GetDatabasePath(profile)
 
 	logger.Info("Starting file restore process",
 		slog.Int("files", len(manifest)),

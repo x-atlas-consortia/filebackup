@@ -14,11 +14,11 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-func Backup(config core.Config, logLevel slog.Leveler, details, tempDir string, directories []string, maxWorkers int) error {
+func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile string, directories []string, maxWorkers int) error {
 	startTime := time.Now()
 
 	// Setup logger
-	logger, logWriter, err := core.NewLogger("backup-start", logLevel)
+	logger, logWriter, err := core.NewLogger("backup-start", profile, logLevel)
 	if err != nil {
 		slog.Error("Failed to create logger", "error", err)
 		return err
@@ -37,7 +37,7 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir string, 
 	}
 	defer os.RemoveAll(tempDir)
 
-	dbPath := core.GetDatabasePath()
+	dbPath := core.GetDatabasePath(profile)
 
 	logger.Info("Starting file backup process",
 		slog.Int("directories", len(directories)),

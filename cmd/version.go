@@ -27,6 +27,11 @@ var versionListCmd = &cobra.Command{
 			panic("log-level not found in context")
 		}
 
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
 		listPath, err := cmd.Flags().GetString("path")
 		if err != nil {
 			return err
@@ -37,7 +42,7 @@ var versionListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListVersions(config, logLevel, listPath, outPath)
+		return list.ListVersions(config, logLevel, listPath, outPath, profile)
 	},
 }
 

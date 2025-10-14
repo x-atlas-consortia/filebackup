@@ -11,7 +11,7 @@ import (
 
 const logDirectory = "$HOME/.local/share/filebackup/logs"
 
-func NewLogger(cmd string, level slog.Leveler) (*slog.Logger, io.Writer, error) {
+func NewLogger(cmd, profile string, level slog.Leveler) (*slog.Logger, io.Writer, error) {
 	// Ensure log directory exists
 	logDir := os.ExpandEnv(logDirectory)
 	err := os.MkdirAll(logDir, 0700)
@@ -20,7 +20,7 @@ func NewLogger(cmd string, level slog.Leveler) (*slog.Logger, io.Writer, error) 
 	}
 
 	// Format filename as fileback-YYYY-MM-DD-HH-MM-SS.log
-	logFileName := fmt.Sprintf("filebackup-%s-%s.log", cmd, time.Now().UTC().Format("2006-01-02-15-04-05"))
+	logFileName := fmt.Sprintf("filebackup-%s-%s-%s.log", cmd, profile, time.Now().UTC().Format("2006-01-02-15-04-05"))
 	logFilePath := filepath.Join(logDir, logFileName)
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {

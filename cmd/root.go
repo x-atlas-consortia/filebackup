@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -19,14 +20,28 @@ var rootCmd = &cobra.Command{
 			return nil
 		}
 
-		exists := core.DoesConfigFileExist()
+		exists, err := core.DoesConfigFileExist()
+		if err != nil {
+			return err
+		}
 		if !exists {
 			return errors.New("configuration file not found, please run 'filebackup init' to create one")
 		}
 
-		config, err := core.ParseConfigFile()
+		profile, err := cmd.Flags().GetString("profile")
 		if err != nil {
-			return errors.New("failed to parse configuration file, please run 'filebackup init' to recreate it")
+			return err
+		}
+		if profile == "" {
+			profile = core.DefaultProfile
+		}
+
+		config, err := core.ParseConfigFile(profile)
+		if err != nil {
+			if errors.Is(err, core.ErrProfileNotFound) {
+				return fmt.Errorf("profile '%s' not found, please run 'filebackup init' to create it or use the '-p' flag to specify another one", profile)
+			}
+			return errors.New("failed to parse profile, please run 'filebackup init' to recreate it")
 		}
 
 		logLevelStr, err := cmd.Flags().GetString("log-level")
@@ -41,6 +56,7 @@ var rootCmd = &cobra.Command{
 
 		cmd.SetContext(context.WithValue(cmd.Context(), "config", config))
 		cmd.SetContext(context.WithValue(cmd.Context(), "log-level", logLevel))
+		cmd.SetContext(context.WithValue(cmd.Context(), "profile", profile))
 
 		return nil
 	},
@@ -58,4 +74,5 @@ func Execute() {
 // Initialize persistent flags
 func init() {
 	rootCmd.PersistentFlags().StringP("log-level", "l", "info", "Set the log level (debug, info, warn, error)")
+	rootCmd.PersistentFlags().StringP("profile", "p", "", "Set the config profile to use (overrides the default profile in the config file)")
 }

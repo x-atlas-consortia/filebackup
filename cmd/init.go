@@ -20,6 +20,15 @@ var initCmd = &cobra.Command{
 
 		fmt.Println("Welcome to filebackup CLI initialization!\nThe following steps are required to initialize filebackup CLI.")
 
+		// Profile name
+		fmt.Print("Profile name (press Enter for 'default'): ")
+		profile, _ := reader.ReadString('\n')
+		profile = strings.TrimSpace(profile)
+		if profile == "" {
+			profile = core.DefaultProfile
+		}
+		fmt.Printf("Using profile: %s\n", profile)
+
 		// AWS Access Key ID
 		fmt.Print("1. AWS Access Key ID: ")
 		accessKeyByteSecret, err := term.ReadPassword(int(syscall.Stdin))
@@ -73,7 +82,7 @@ var initCmd = &cobra.Command{
 			AWSSecretAccessKey: secretAccessKeySecret,
 			EncryptionSecret:   secret,
 		}
-		err = core.SaveConfigFile(config)
+		err = core.SaveConfigFile(config, profile)
 		if err != nil {
 			return err
 		}

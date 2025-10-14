@@ -31,6 +31,11 @@ var backupStartCmd = &cobra.Command{
 			panic("log-level not found in context")
 		}
 
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
 		directories, err := cmd.Flags().GetStringSlice("directories")
 		if err != nil {
 			return err
@@ -63,7 +68,7 @@ var backupStartCmd = &cobra.Command{
 			return errors.New("max-workers cannot be greater than the number of CPU cores")
 		}
 
-		return backup.Backup(config, logLevel, details, tempDir, directories, maxWorkers)
+		return backup.Backup(config, logLevel, details, tempDir, profile, directories, maxWorkers)
 	},
 }
 
@@ -81,12 +86,17 @@ var backupListCmd = &cobra.Command{
 			panic("log-level not found in context")
 		}
 
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
 		outPath, err := cmd.Flags().GetString("out")
 		if err != nil {
 			return err
 		}
 
-		return list.ListBackups(config, logLevel, outPath)
+		return list.ListBackups(config, logLevel, outPath, profile)
 	},
 }
 

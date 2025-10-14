@@ -32,6 +32,11 @@ var restoreStartCmd = &cobra.Command{
 			panic("log-level not found in context")
 		}
 
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
 		// Validate manifest file path
 		manifestPath, err := cmd.Flags().GetString("manifest")
 		if err != nil {
@@ -75,7 +80,7 @@ var restoreStartCmd = &cobra.Command{
 			return errors.New("max-workers cannot be greater than the number of CPU cores")
 		}
 
-		return restore.Restore(config, logLevel, manifest, outDir, details, tempDir, maxWorkers)
+		return restore.Restore(config, logLevel, manifest, outDir, details, tempDir, profile, maxWorkers)
 	},
 }
 
@@ -98,7 +103,12 @@ var restoreListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListRestores(config, logLevel, outPath)
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
+		return list.ListRestores(config, logLevel, outPath, profile)
 	},
 }
 
