@@ -32,7 +32,7 @@ var versionListCmd = &cobra.Command{
 			panic("profile not found in context")
 		}
 
-		listPath, err := cmd.Flags().GetString("path")
+		filePath, err := cmd.Flags().GetString("file")
 		if err != nil {
 			return err
 		}
@@ -42,7 +42,7 @@ var versionListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListVersions(config, logLevel, listPath, outPath, profile)
+		return list.ListVersions(config, logLevel, filePath, outPath, profile)
 	},
 }
 
@@ -52,9 +52,9 @@ func init() {
 
 	// Versions list flags
 	// path flag
-	versionListCmd.Flags().StringP("path", "p", "", "Path of the file to list versions for")
-	versionListCmd.MarkFlagRequired("path")
-	versionListCmd.MarkFlagFilename("path")
+	versionListCmd.Flags().StringP("file", "f", "", "Path of the file to list versions for")
+	versionListCmd.MarkFlagRequired("file")
+	versionListCmd.MarkFlagFilename("file")
 
 	// out flag
 	versionListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")

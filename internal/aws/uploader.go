@@ -96,11 +96,10 @@ func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey s
 
 	// Perform the upload
 	resp, err := uploader.Upload(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(m.bucket),
-		Key:    aws.String(objectKey),
-		Body:   file,
-		// StorageClass:      types.StorageClassDeepArchive,
-		StorageClass:      types.StorageClassStandard,
+		Bucket:            aws.String(m.bucket),
+		Key:               aws.String(objectKey),
+		Body:              file,
+		StorageClass:      types.StorageClassDeepArchive,
 		ChecksumAlgorithm: types.ChecksumAlgorithmCrc64nvme,
 		Metadata: map[string]string{
 			"UploadedBy":     "x-atlas-consortia/filebackup",
