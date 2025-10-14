@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 	"github.com/x-atlas-consortia/filebackup/internal/database"
@@ -116,6 +117,15 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	if err != nil {
 		logger.Error("Error inserting backup event", slog.String("error", err.Error()))
 		return err
+	}
+
+	// Upload database to S3
+	dbName := filepath.Base(dbPath)
+	dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
+	if err != nil {
+		logger.Error("Failed to upload database to S3", slog.String("error", err.Error()))
+	} else {
+		logger.Info("Database uploaded to S3", slog.String("version_id", dbVersionID))
 	}
 
 	fmt.Fprintf(logWriter, `time=%s, msg="Backup process completed" duration=%.2f seconds\n`,

@@ -55,7 +55,7 @@ type AWSS3FileManager struct {
 	s3Client *s3.Client
 }
 
-func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey string, lastModifiedAt time.Time) (string, error) {
+func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey string, storageClass types.StorageClass, lastModifiedAt time.Time) (string, error) {
 	// Open the file for reading
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -99,7 +99,7 @@ func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey s
 		Bucket:            aws.String(m.bucket),
 		Key:               aws.String(objectKey),
 		Body:              file,
-		StorageClass:      types.StorageClassDeepArchive,
+		StorageClass:      storageClass,
 		ChecksumAlgorithm: types.ChecksumAlgorithmCrc64nvme,
 		Metadata: map[string]string{
 			"UploadedBy":     "x-atlas-consortia/filebackup",

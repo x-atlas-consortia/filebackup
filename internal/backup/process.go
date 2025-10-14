@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 	"github.com/x-atlas-consortia/filebackup/internal/database"
@@ -89,7 +90,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	defer os.Remove(encFilePath)
 
 	// Upload to S3
-	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath, lastModifiedAt)
+	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath, types.StorageClassDeepArchive, lastModifiedAt)
 	if err != nil {
 		return false, fmt.Errorf("failed to upload file %s to S3: %w", filePath, err)
 	}
