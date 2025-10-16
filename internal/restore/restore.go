@@ -89,7 +89,7 @@ func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestI
 	processWg.Wait()
 
 	// Insert restore event into the database
-	err = insertRestoreEvent(ctx, dbPath, details, startTime)
+	err = insertRestoreEvent(ctx, dbPath, details, startTime, logger)
 	if err != nil {
 		logger.Error("Error inserting restore event", slog.String("error", err.Error()))
 		return err
@@ -101,12 +101,16 @@ func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestI
 	return nil
 }
 
-func insertRestoreEvent(ctx context.Context, dbPath, details string, startTime time.Time) error {
+func insertRestoreEvent(ctx context.Context, dbPath, details string, startTime time.Time, logger *slog.Logger) error {
 	db, err := database.New(ctx, dbPath, false)
 	if err != nil {
 		return fmt.Errorf("error inserting event: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
+		}
+	}()
 
 	// Insert the backup event
 	event := database.InsertEvent{

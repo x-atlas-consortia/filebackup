@@ -113,7 +113,7 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	logger.Info("Database worker finished")
 
 	// Insert backup event into the database
-	err = insertBackupEvent(ctx, dbPath, details, startTime)
+	err = insertBackupEvent(ctx, dbPath, details, startTime, logger)
 	if err != nil {
 		logger.Error("Error inserting backup event", slog.String("error", err.Error()))
 		return err
@@ -134,12 +134,16 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	return nil
 }
 
-func insertBackupEvent(ctx context.Context, dbPath, details string, startTime time.Time) error {
+func insertBackupEvent(ctx context.Context, dbPath, details string, startTime time.Time, logger *slog.Logger) error {
 	db, err := database.New(ctx, dbPath, false)
 	if err != nil {
 		return fmt.Errorf("error inserting event: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
+		}
+	}()
 
 	// Insert the backup event
 	event := database.InsertEvent{
