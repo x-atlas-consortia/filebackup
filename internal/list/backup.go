@@ -32,7 +32,7 @@ func ListBackups(config core.Config, logLevel slog.Leveler, outPath, profile str
 		return nil
 	}
 	defer func() {
-		if closeErr := readOnlyDB.Close(); closeErr != nil {
+		if closeErr := readOnlyDB.Close(ctx); closeErr != nil {
 			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
 		}
 	}()

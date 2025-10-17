@@ -24,7 +24,7 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath,
 		return
 	}
 	defer func() {
-		if closeErr := readOnlyDB.Close(); closeErr != nil {
+		if closeErr := readOnlyDB.Close(ctx); closeErr != nil {
 			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
 		}
 	}()

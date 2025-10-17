@@ -140,7 +140,7 @@ func insertBackupEvent(ctx context.Context, dbPath, details string, startTime ti
 		return fmt.Errorf("error inserting event: %w", err)
 	}
 	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
+		if closeErr := db.Close(ctx); closeErr != nil {
 			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
 		}
 	}()

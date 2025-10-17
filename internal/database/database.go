@@ -106,6 +106,7 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 		db:             db,
 		fileExistsStmt: fileExistsStmt,
 		lockFile:       lockFile,
+		readonly:       readonly,
 		sha256Stmt:     sha256Stmt,
 	}, nil
 }
@@ -143,6 +144,7 @@ type Database struct {
 	db             *sql.DB
 	fileExistsStmt *sql.Stmt
 	lockFile       *os.File
+	readonly       bool
 	sha256Stmt     *sql.Stmt
 }
 
@@ -155,8 +157,12 @@ func (d *Database) Reindex(ctx context.Context) error {
 }
 
 // Close closes the database connection and releases the lock
-func (d *Database) Close() error {
-	var dbErr, lockErr error
+func (d *Database) Close(ctx context.Context) error {
+	var walErr, dbErr, lockErr error
+
+	if d.db != nil && !d.readonly {
+		_, walErr = d.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE);")
+	}
 
 	// Close database connection
 	if d.db != nil {
@@ -171,6 +177,9 @@ func (d *Database) Close() error {
 	}
 
 	// Return the first error encountered
+	if walErr != nil {
+		return walErr
+	}
 	if dbErr != nil {
 		return dbErr
 	}

@@ -21,7 +21,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 		return
 	}
 	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
+		if closeErr := db.Close(ctx); closeErr != nil {
 			workerLogger.Error("Error closing database", slog.String("error", closeErr.Error()))
 		}
 	}()
