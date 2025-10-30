@@ -1,6 +1,6 @@
 FROM redhat/ubi9-minimal
 
-ARG GO_VERSION=1.25.2
+ARG GO_VERSION=1.25.3
 
 # Update OS packages
 RUN microdnf update -y && \
