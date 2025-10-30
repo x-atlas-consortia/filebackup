@@ -125,14 +125,12 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	}
 
 	// Upload database to S3 if any files were inserted
-	if numFilesInserted > 0 {
-		dbName := filepath.Base(dbPath)
-		dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
-		if err != nil {
-			logger.Error("Failed to upload database to S3", slog.String("error", err.Error()))
-		} else {
-			logger.Info("Database uploaded to S3", slog.String("version_id", dbVersionID))
-		}
+	dbName := filepath.Base(dbPath)
+	dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
+	if err != nil {
+		logger.Error("Failed to upload database to S3", slog.String("error", err.Error()))
+	} else {
+		logger.Info("Database uploaded to S3", slog.String("version_id", dbVersionID))
 	}
 
 	fmt.Fprintf(logWriter, "time=%s msg=\"Backup process completed\" files=%d duration=%.2f seconds\n",
