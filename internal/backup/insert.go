@@ -10,7 +10,7 @@ import (
 
 const databaseBatchSize = 500
 
-func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath string, dbFileInsertWorkerInited <-chan database.InsertFileItem, dbInitialized chan<- error) {
+func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath string, dbFileInsertWorkerInited <-chan database.InsertFileItem, dbInitialized chan<- error) int {
 	workerLogger := logger.With(slog.String("worker", "database_file_insert"))
 
 	// Write mode database
@@ -18,7 +18,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 	if err != nil {
 		workerLogger.Error("Error opening database", slog.String("error", err.Error()))
 		dbInitialized <- err
-		return
+		return 0
 	}
 	defer func() {
 		if closeErr := db.Close(ctx); closeErr != nil {
@@ -32,6 +32,8 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 
 	// Batch files coming in through channel
 	batch := make([]database.InsertFileItem, 0, databaseBatchSize)
+	totalInserted := 0
+
 	for {
 		select {
 		case fileInfoItem, ok := <-dbFileInsertWorkerInited:
@@ -42,9 +44,10 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 						workerLogger.Error("Error processing final batch", slog.String("error", err.Error()))
 					} else {
 						workerLogger.Info("Final batch processed successfully", slog.Int("batch_size", len(batch)))
+						totalInserted += len(batch)
 					}
 				}
-				return
+				return totalInserted
 			}
 
 			// Add to batch
@@ -56,6 +59,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 					workerLogger.Error("Error processing batch", slog.String("error", err.Error()))
 				} else {
 					workerLogger.Info("Batch processed successfully", slog.Int("batch_size", len(batch)))
+					totalInserted += len(batch)
 				}
 				batch = batch[:0] // Reset batch
 			}
@@ -67,9 +71,10 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 					workerLogger.Error("Error processing final batch on cancellation", slog.String("error", err.Error()))
 				} else {
 					workerLogger.Info("Final batch processed successfully on cancellation", slog.Int("batch_size", len(batch)))
+					totalInserted += len(batch)
 				}
 			}
-			return
+			return totalInserted
 		}
 	}
 }

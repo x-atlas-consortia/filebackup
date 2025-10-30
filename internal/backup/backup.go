@@ -61,10 +61,13 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	// Create channel and start database file insert worker
 	fileInsertCh := make(chan database.InsertFileItem, 1000)
 	dbReady := make(chan error, 1)
+	numFilesInsertedCh := make(chan int, 1)
 	var dbInsertWg sync.WaitGroup
 
 	dbInsertWg.Go(func() {
-		databaseFileInsertWorker(ctx, logger, dbPath, fileInsertCh, dbReady)
+		numFilesInserted := databaseFileInsertWorker(ctx, logger, dbPath, fileInsertCh, dbReady)
+		numFilesInsertedCh <- numFilesInserted
+		close(numFilesInsertedCh)
 	})
 
 	if err := <-dbReady; err != nil {
@@ -112,6 +115,8 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	dbInsertWg.Wait()
 	logger.Info("Database worker finished")
 
+	numFilesInserted := <-numFilesInsertedCh
+
 	// Insert backup event into the database
 	err = insertBackupEvent(ctx, dbPath, details, startTime, logger)
 	if err != nil {
@@ -119,17 +124,19 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 		return err
 	}
 
-	// Upload database to S3
-	dbName := filepath.Base(dbPath)
-	dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
-	if err != nil {
-		logger.Error("Failed to upload database to S3", slog.String("error", err.Error()))
-	} else {
-		logger.Info("Database uploaded to S3", slog.String("version_id", dbVersionID))
+	// Upload database to S3 if any files were inserted
+	if numFilesInserted > 0 {
+		dbName := filepath.Base(dbPath)
+		dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
+		if err != nil {
+			logger.Error("Failed to upload database to S3", slog.String("error", err.Error()))
+		} else {
+			logger.Info("Database uploaded to S3", slog.String("version_id", dbVersionID))
+		}
 	}
 
-	fmt.Fprintf(logWriter, `time=%s, msg="Backup process completed" duration=%.2f seconds\n`,
-		time.Now().Format(time.RFC3339), time.Since(startTime).Seconds())
+	fmt.Fprintf(logWriter, "time=%s msg=\"Backup process completed\" files=%d duration=%.2f seconds\n",
+		time.Now().Format(time.RFC3339), numFilesInserted, time.Since(startTime).Seconds())
 
 	return nil
 }
