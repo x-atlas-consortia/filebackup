@@ -144,11 +144,11 @@ func insertBackupEvent(ctx context.Context, dbPath, details string, startTime ti
 	if err != nil {
 		return fmt.Errorf("error inserting event: %w", err)
 	}
-	defer func() {
+	closeDB := func() {
 		if closeErr := db.Close(ctx); closeErr != nil {
 			logger.Error("Error closing database", slog.String("error", closeErr.Error()))
 		}
-	}()
+	}
 
 	// Insert the backup event
 	event := database.InsertEvent{
@@ -159,14 +159,19 @@ func insertBackupEvent(ctx context.Context, dbPath, details string, startTime ti
 	}
 	err = db.InsertEvent(ctx, event)
 	if err != nil {
+		closeDB()
 		return fmt.Errorf("error inserting event: %w", err)
 	}
 
 	// Reindex
 	err = db.Reindex(ctx)
 	if err != nil {
+		closeDB()
 		return fmt.Errorf("error reindexing database: %w", err)
 	}
+
+	// Explicitly close the database
+	closeDB()
 
 	return nil
 }
