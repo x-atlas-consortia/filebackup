@@ -20,11 +20,11 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 		dbInitialized <- err
 		return 0
 	}
-	defer func() {
+	closeDB := func() {
 		if closeErr := db.Close(ctx); closeErr != nil {
 			workerLogger.Error("Error closing database", slog.String("error", closeErr.Error()))
 		}
-	}()
+	}
 
 	// Signal that database is ready
 	dbInitialized <- nil
@@ -47,6 +47,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 						totalInserted += len(batch)
 					}
 				}
+				closeDB()
 				return totalInserted
 			}
 
@@ -74,6 +75,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 					totalInserted += len(batch)
 				}
 			}
+			closeDB()
 			return totalInserted
 		}
 	}
