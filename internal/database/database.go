@@ -15,6 +15,7 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
+// New initializes a new Database instance
 func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 	var lockFile *os.File
 	var err error
@@ -148,6 +149,7 @@ type Database struct {
 	sha256Stmt     *sql.Stmt
 }
 
+// Reindex performs a REINDEX operation on the database
 func (d *Database) Reindex(ctx context.Context) error {
 	_, err := d.db.ExecContext(ctx, `REINDEX`)
 	if err != nil {
@@ -186,6 +188,7 @@ func (d *Database) Close(ctx context.Context) error {
 	return lockErr
 }
 
+// InsertEvent represents an event to be inserted into the database
 type InsertEvent struct {
 	Details   string
 	EndedAt   int64
@@ -193,6 +196,7 @@ type InsertEvent struct {
 	Type      string
 }
 
+// InsertEvent inserts a new event into the database
 func (d *Database) InsertEvent(ctx context.Context, event InsertEvent) error {
 	stmt := `INSERT INTO events (details, ended_at, started_at, type)
 	         VALUES (?, ?, ?, ?)`
@@ -212,6 +216,7 @@ func (d *Database) InsertEvent(ctx context.Context, event InsertEvent) error {
 	return nil
 }
 
+// InsertFileItem represents a file to be inserted into the database
 type InsertFileItem struct {
 	AWSVersionID   string
 	LastModifiedAt int64
@@ -220,6 +225,7 @@ type InsertFileItem struct {
 	Size           int64
 }
 
+// InsertFiles inserts multiple files into the database in a single transaction
 func (d *Database) InsertFiles(ctx context.Context, files []InsertFileItem) error {
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -250,6 +256,7 @@ func (d *Database) InsertFiles(ctx context.Context, files []InsertFileItem) erro
 	return nil
 }
 
+// DoesFileExist checks if a file with the given path, size, and last modified timestamp exists in the database
 func (d *Database) DoesFileExist(ctx context.Context, path string, size, lastModifiedAt int64) (bool, error) {
 	var count int
 	err := d.fileExistsStmt.QueryRowContext(ctx, path, size, lastModifiedAt).Scan(&count)
@@ -259,6 +266,7 @@ func (d *Database) DoesFileExist(ctx context.Context, path string, size, lastMod
 	return count > 0, nil
 }
 
+// GetSHA256 retrieves the SHA-256 hash for a given file path and AWS version ID
 func (d *Database) GetSHA256(ctx context.Context, path, awsVersionID string) (string, error) {
 	var sha256 string
 	err := d.sha256Stmt.QueryRowContext(ctx, path, awsVersionID).Scan(&sha256)
@@ -272,12 +280,14 @@ func (d *Database) GetSHA256(ctx context.Context, path, awsVersionID string) (st
 	return sha256, nil
 }
 
+// GetEventsResultItem represents a single event retrieved from the database
 type GetEventsResultItem struct {
 	Details   sql.NullString
 	EndedAt   int64
 	StartedAt int64
 }
 
+// GetEvents retrieves events of a specific type from the database
 func (d *Database) GetEvents(ctx context.Context, eventType string) ([]GetEventsResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
 		SELECT started_at, ended_at, details
@@ -306,6 +316,7 @@ func (d *Database) GetEvents(ctx context.Context, eventType string) ([]GetEvents
 	return results, nil
 }
 
+// GetFilesResultItem represents a single file retrieved from the database
 type GetFilesResultItem struct {
 	LastModifiedAt int64
 	Path           string
@@ -313,6 +324,7 @@ type GetFilesResultItem struct {
 	VersionID      string
 }
 
+// GetFiles retrieves the latest versions of files under a given path prefix up to a specified time
 func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) ([]GetFilesResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
 		SELECT path, size, last_modified_at, aws_version_id
@@ -345,12 +357,14 @@ func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) 
 	return files, nil
 }
 
+// GetVersionsResultItem represents a single version of a file
 type GetVersionsResultItem struct {
 	LastModifiedAt int64
 	SHA256         string
 	Size           int64
 }
 
+// GetVersions retrieves all versions of a file identified by its path
 func (d *Database) GetVersions(ctx context.Context, filePath string) ([]GetVersionsResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
 		SELECT last_modified_at, size, sha256

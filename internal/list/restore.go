@@ -12,6 +12,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// ListRestores lists all restore events from the database and writes them to the specified output path or stdout
 func ListRestores(config core.Config, logLevel slog.Leveler, outPath, profile string) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("restore-list", profile, logLevel)

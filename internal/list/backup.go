@@ -12,6 +12,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// ListBackups lists all backup events from the database and writes them to the specified output path or stdout
 func ListBackups(config core.Config, logLevel slog.Leveler, outPath, profile string) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("backup-list", profile, logLevel)

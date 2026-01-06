@@ -19,6 +19,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// processFileWorker processes files: encrypts, uploads to S3, and sends info for database insertion.
 func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) {
 	// Read mode database
 	readOnlyDB, err := database.New(ctx, dbPath, true)
@@ -59,6 +60,7 @@ func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret,
 	}
 }
 
+// processFile encrypts a file, uploads it to S3, and sends its info for database insertion.
 func processFile(ctx context.Context, filePath, secret, tempDir string, db *database.Database, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) (bool, error) {
 	// Get file info
 	info, err := os.Stat(filePath)
@@ -107,6 +109,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	return true, nil
 }
 
+// encryptFile encrypts the input file and writes the encrypted data to the output file.
 func encryptFile(ctx context.Context, inPath, outPath, secret string) (string, error) {
 	// 64GB Limit, NIST Special Publication 800-38D section 5.2.1.1)
 	// Limit in crypto library is 2**31 - 1 byte
@@ -217,6 +220,7 @@ func encryptFile(ctx context.Context, inPath, outPath, secret string) (string, e
 	return fmt.Sprintf("%x", checksum), nil
 }
 
+// checkIntegrity decrypts the encrypted file and verifies its SHA256 hash matches the expected hash.
 func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash []byte) error {
 	// Recreate the AES-GCM cipher
 	block, err := aes.NewCipher(encKey)

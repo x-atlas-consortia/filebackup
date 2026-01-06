@@ -11,6 +11,7 @@ import (
 
 const logDirectory = "$HOME/.local/share/filebackup/logs"
 
+// NewLogger creates a new slog.Logger that logs to both console and a file.
 func NewLogger(cmd, profile string, level slog.Leveler) (*slog.Logger, io.Writer, error) {
 	// Ensure log directory exists
 	logDir := os.ExpandEnv(logDirectory)
@@ -39,6 +40,7 @@ func NewLogger(cmd, profile string, level slog.Leveler) (*slog.Logger, io.Writer
 	return logger, multiWriter, nil
 }
 
+// ParseLogLevel converts a string representation of log level to slog.Leveler.
 func ParseLogLevel(levelStr string) (slog.Leveler, error) {
 	switch levelStr {
 	case "debug":

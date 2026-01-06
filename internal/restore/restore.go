@@ -14,6 +14,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// Restore performs the file restore process using the provided configuration and manifest.
 func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir, profile string, maxWorkers int) error {
 	startTime := time.Now()
 
@@ -101,6 +102,7 @@ func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestI
 	return nil
 }
 
+// insertRestoreEvent inserts a restore event into the database.
 func insertRestoreEvent(ctx context.Context, dbPath, details string, startTime time.Time, logger *slog.Logger) error {
 	db, err := database.New(ctx, dbPath, false)
 	if err != nil {

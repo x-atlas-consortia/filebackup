@@ -10,6 +10,7 @@ import (
 
 const databaseBatchSize = 500
 
+// databaseFileInsertWorker handles inserting file records into the database in batches.
 func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath string, dbFileInsertWorkerInited <-chan database.InsertFileItem, dbInitialized chan<- error) int {
 	workerLogger := logger.With(slog.String("worker", "database_file_insert"))
 
@@ -81,6 +82,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 	}
 }
 
+// processBatchFiles inserts a batch of file records into the database.
 func processBatchFiles(ctx context.Context, db *database.Database, batch []database.InsertFileItem) error {
 	if len(batch) == 0 {
 		return nil

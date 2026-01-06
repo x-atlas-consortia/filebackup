@@ -15,6 +15,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// Backup performs the backup process based on the provided configuration and parameters.
 func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile string, directories []string, maxWorkers int) error {
 	startTime := time.Now()
 
@@ -139,6 +140,7 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	return nil
 }
 
+// insertBackupEvent records a backup event in the database.
 func insertBackupEvent(ctx context.Context, dbPath, details string, startTime time.Time, logger *slog.Logger) error {
 	db, err := database.New(ctx, dbPath, false)
 	if err != nil {

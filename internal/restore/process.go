@@ -16,6 +16,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// processManifestItemWorker processes manifest items from the provided channel.
 func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) {
 	// Read mode database
 	readOnlyDB, err := database.New(ctx, dbPath, true)
@@ -55,6 +56,7 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath,
 	}
 }
 
+// processManifestItem processes a single manifest item by downloading, decrypting, and verifying it.
 func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, secret, tempDir string, db *database.Database, downloader *aws.AWSS3FileManager) error {
 	// Create a temporary file path to download the object, it will be encrypted
 	tmpFileName, err := core.GenerateRandomURLEncodedString(16)
@@ -97,6 +99,7 @@ func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, sec
 	return nil
 }
 
+// decryptFile decrypts the input file and writes the decrypted content to the output file.
 func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, error) {
 	inputFile, err := os.Open(inPath)
 	if err != nil {

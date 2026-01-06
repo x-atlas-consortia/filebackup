@@ -16,6 +16,7 @@ import (
 	"github.com/aws/smithy-go"
 )
 
+// Config holds AWS S3 configuration details.
 type Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
@@ -23,6 +24,7 @@ type Config struct {
 	Bucket          string
 }
 
+// New creates a new AWSS3FileManager.
 func New(ctx context.Context, config Config, logger *slog.Logger) (*AWSS3FileManager, error) {
 	// Create S3 client
 	s3Client := s3.New(s3.Options{
@@ -49,12 +51,14 @@ func New(ctx context.Context, config Config, logger *slog.Logger) (*AWSS3FileMan
 	}, nil
 }
 
+// AWSS3FileManager manages file uploads and downloads to/from AWS S3.
 type AWSS3FileManager struct {
 	bucket   string
 	logger   *slog.Logger
 	s3Client *s3.Client
 }
 
+// UploadFile uploads a file to S3 with the specified storage class and metadata.
 func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey string, storageClass types.StorageClass, lastModifiedAt time.Time) (string, error) {
 	// Open the file for reading
 	file, err := os.Open(filePath)

@@ -6,12 +6,14 @@ import (
 	"strings"
 )
 
+// ManifestItem represents a single item in the manifest file for S3 downloads.
 type ManifestItem struct {
 	Bucket    string
 	Key       string
 	VersionID string
 }
 
+// ParseManifestFile reads and parses the manifest file at the given path.
 func ParseManifestFile(path string) ([]ManifestItem, error) {
 	var items []ManifestItem
 

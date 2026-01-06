@@ -16,6 +16,7 @@ const DefaultProfile = "default"
 const configPath = "$HOME/.config/filebackup/config.json"
 const databasePath = "$HOME/.local/share/filebackup/filebackup-%s.db"
 
+// GetDatabasePath returns the database path for the given profile.
 func GetDatabasePath(profile string) string {
 	if profile == "" {
 		profile = DefaultProfile
@@ -25,6 +26,7 @@ func GetDatabasePath(profile string) string {
 	return os.ExpandEnv(dbPath)
 }
 
+// Config represents the configuration for the file backup application.
 type Config struct {
 	AWSAccessKeyID     string `json:"aws_access_key_id"`
 	AWSRegion          string `json:"aws_region"`
@@ -33,6 +35,7 @@ type Config struct {
 	EncryptionSecret   string `json:"encryption_secret"`
 }
 
+// SaveConfigFile saves the given configuration to the config file under the specified profile.
 func SaveConfigFile(config Config, profile string) error {
 	if profile == "" {
 		profile = DefaultProfile
@@ -79,6 +82,7 @@ func SaveConfigFile(config Config, profile string) error {
 	return nil
 }
 
+// createConfigFile creates a new config file with the given configuration under the specified profile.
 func createConfigFile(config Config, profile, configPath string) error {
 	configDir := filepath.Dir(configPath)
 	err := os.MkdirAll(configDir, 0700)
@@ -106,6 +110,7 @@ func createConfigFile(config Config, profile, configPath string) error {
 	return nil
 }
 
+// updateConfigFile updates an existing config file with the given configuration under the specified profile.
 func updateConfigFile(config Config, profile, configPath string) error {
 	// Read existing config file
 	data, err := os.ReadFile(configPath)
@@ -140,6 +145,7 @@ func updateConfigFile(config Config, profile, configPath string) error {
 	return nil
 }
 
+// DoesConfigFileExist checks if the config file exists.
 func DoesConfigFileExist() (bool, error) {
 	configPath := os.ExpandEnv(configPath)
 	if _, err := os.Stat(configPath); err == nil {
@@ -151,6 +157,7 @@ func DoesConfigFileExist() (bool, error) {
 	}
 }
 
+// ParseConfigFile reads and parses the config file for the specified profile.
 func ParseConfigFile(profile string) (Config, error) {
 	if profile == "" {
 		profile = DefaultProfile
@@ -194,6 +201,7 @@ func ParseConfigFile(profile string) (Config, error) {
 	return config, nil
 }
 
+// validateConfig checks that all required fields in the config are valid.
 func validateConfig(config Config) error {
 	var errs []string
 

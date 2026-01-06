@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// DownloadFile downloads a file from S3 based on the provided ManifestItem and saves it to outPath.
 func (m *AWSS3FileManager) DownloadFile(ctx context.Context, item ManifestItem, outPath string) error {
 	downloader := manager.NewDownloader(m.s3Client)
 

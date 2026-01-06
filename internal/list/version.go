@@ -12,6 +12,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// ListVersions lists all versions of a specified file from the database and writes them to the specified output path or stdout
 func ListVersions(config core.Config, logLevel slog.Leveler, filePath, outPath, profile string) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("version-list", profile, logLevel)

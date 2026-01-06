@@ -12,6 +12,7 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
+// ListFiles lists all files under a specified path prefix from the database and writes them to the specified output path or stdout
 func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath, profile string, timestamp time.Time, manifest bool) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("file-list", profile, logLevel)

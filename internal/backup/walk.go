@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 )
 
+// walkFiles walks through the provided directories and sends file paths to the filesCh channel.
 func walkFiles(ctx context.Context, logger *slog.Logger, directories []string, filesCh chan<- string) {
 	workerLogger := logger.With(slog.String("worker", "walk_files"))
 
@@ -23,6 +24,7 @@ func walkFiles(ctx context.Context, logger *slog.Logger, directories []string, f
 	}
 }
 
+// walkDirectory walks a single directory and sends file paths to the filesCh channel.
 func walkDirectory(ctx context.Context, logger *slog.Logger, rootDir string, filesCh chan<- string) error {
 	// Check if directory exists and is accessible
 	if _, err := os.Stat(rootDir); err != nil {
