@@ -17,7 +17,7 @@ Help:
 - Command: `filebackup init`
 - File: [`cmd/init.go`](cmd/init.go)
 - Purpose: Interactive initialization to create/update config profile. This must be run before any backup/restore operations.
-- Notes: Prompts for AWS keys, region, S3 bucket and encryption secret.
+- Notes: Prompts for AWS keys, region, S3 bucket and encryption secret. It is recommended to use a strong, unique encryption secret such as the output of `openssl rand -hex 32`.<u>DO NOT LOSE OR EXPOSE THIS SECRET</u>
 
 ### backup
 - Top-level: [`cmd/backup.go`](cmd/backup.go)
@@ -96,7 +96,7 @@ Logs are saved to `~/.local/share/filebackup` by default. The log level can be s
 1. Walk specified directories to list files.
 2. For each file:
    - Split file into chunks.
-   - Encrypt each chunk using AES-256-GCM with a key derived from the profile secret (set during init, <u>DO NOT LOG OR EXPOSE THIS SECRET</u>). Encrypted files are in the format: 
+   - Encrypt each chunk using AES-256-GCM with a key derived from the profile encryption secret (set during init, <u>DO NOT LOSE OR EXPOSE THIS SECRET</u>). Encrypted files are in the format: 
       - [16-byte salt]]
       - For each chunk:
         - [12-byte nonce]
