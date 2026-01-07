@@ -1,6 +1,6 @@
 # FileBackup — CLI Reference
 
-A command-line utility for backing up, encrypting, and restoring files to AWS S3.
+A command-line utility for backing up, encrypting, and restoring files to AWS S3 Deep Archive with version tracking.
 
 Usage: `filebackup <command> [subcommand] [flags]`
 
