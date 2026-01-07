@@ -17,7 +17,7 @@ Help:
 - Command: `filebackup init`
 - File: [`cmd/init.go`](cmd/init.go)
 - Purpose: Interactive initialization to create/update config profile. This must be run before any backup/restore operations.
-- Notes: Prompts for AWS keys, region, S3 bucket and encryption secret. It is recommended to use a strong, unique encryption secret such as the output of `openssl rand -hex 32`.<u>DO NOT LOSE OR EXPOSE THIS SECRET</u>
+- Notes: Prompts for AWS keys, region, S3 bucket and encryption secret. It is recommended to use a strong, unique encryption secret such as the output of `openssl rand -hex 32`. <u>DO NOT LOSE OR EXPOSE THIS SECRET</u>
 
 ### backup
 - Top-level: [`cmd/backup.go`](cmd/backup.go)
