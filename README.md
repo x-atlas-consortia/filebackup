@@ -45,12 +45,13 @@ Help:
     - Command: `filebackup restore start --manifest <file> --out <dir> [flags]`
     - Handler: calls [`restore.Restore`](internal/restore/restore.go)
     - Flags:
-      - `--manifest, -m` (filename, required) — manifest file (CSV: `bucket,key,version_id`) parsed by [`aws.ParseManifestFile`](internal/aws/manifest.go).
+      - `--manifest, -m` (filename, required) — manifest file (CSV: `bucket,key,version_id`) (See: [filebackup file list --manifest](#4-file))
       - `--out, -o` (dirname, default: `.`) — output directory for restored files.
       - `--details, -d` (string) — details for the restore event.
       - `--temp-dir, -t` (dirname, default: system temp) — temporary workspace.
       - `--max-workers, -w` (int, default: 4) — must be >= 1 and <= number of CPU cores.
     - Behavior: downloads encrypted objects, decrypts, verifies SHA256 via SQLite DB.
+    - Notes: The file to be restored must have already been moved to a restorable state in S3 (e.g., restored from Glacier) before running this command. This can be achieved using AWS S3 Batch Operations and the [filebackup file list --manifest](#4-file) command to generate the manifest. The Batch Operations job must complete before starting `filebackup restore start` and may take several hours/days depending on the number of files and retrieval speed.
   - list
     - Command: `filebackup restore list`
     - Handler: [`list.ListRestores`](internal/list/restore.go)
@@ -100,6 +101,12 @@ Logs are saved to `~/.local/share/filebackup` by default. The log level can be s
    - Unencrypt the chunks and verify SHA256 hash against the original file.
    - Upload encrypted file to S3 using the AWS SDK. AWS SDK handles integrity checks for uploaded objects.
 3. Record file metadata and AWS version ID in the local SQLite database.
+
+## Restore process overview
+1. Create a manifest file in CSV format: `bucket,key,version_id` for desired files using the [filebackup file list --manifest](#4-file) command.
+2. Start a restore job using [AWS S3 Batch Operations](https://docs.aws.amazon.com/AmazonS3/latest/userguide/batch-ops-create-job.html) with the manifest file to restore files.
+3. Wait for the Batch Operations job to complete. This may take several hours/days depending on the number of files and retrieval speed.
+4. Run the [filebackup restore start](#3-restore) command with the manifest file to download, decrypt, and verify the restored files.
 
 ## Database and schema
 The utility uses a local SQLite database per profile to track backed up files, versions, and events. Databases are stored at `~/.local/share/filebackup`.
