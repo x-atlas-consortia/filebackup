@@ -93,6 +93,7 @@ The utility supports multiple configuration profiles stored in `~/.config/fileba
 Logs are saved to `~/.local/share/filebackup` by default. The log level can be set via the `--log-level` global flag.
 
 ## Backup process overview
+The backup process involves encrypting files using AES-256-GCM before uploading them to AWS S3. AWS S3 also provides encryption at rest and integrity checks for uploaded objects. Essentially, AWS S3 is encrypting an already encrypted file. AWS S3 does not have access to the encryption secret, ensuring end-to-end encryption. AWS S3 versioning must be enabled on the target bucket to allow for file version tracking. 
 1. Walk specified directories to list files.
 2. For each file:
    - Split file into chunks.
