@@ -112,9 +112,49 @@ var restoreListCmd = &cobra.Command{
 	},
 }
 
+var restoreStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Get the status of a restore",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, ok := cmd.Context().Value("config").(core.Config)
+		if !ok {
+			panic("config not found in context")
+		}
+
+		logLevel, ok := cmd.Context().Value("log-level").(slog.Leveler)
+		if !ok {
+			panic("log-level not found in context")
+		}
+
+		profile, ok := cmd.Context().Value("profile").(string)
+		if !ok {
+			panic("profile not found in context")
+		}
+
+		// Validate manifest file path
+		manifestPath, err := cmd.Flags().GetString("manifest")
+		if err != nil {
+			return err
+		}
+		manifest, err := aws.ParseManifestFile(manifestPath)
+		if err != nil {
+			return err
+		}
+
+		outPath, err := cmd.Flags().GetString("out")
+		if err != nil {
+			return err
+		}
+
+		// Implementation for restore status would go here
+		return list.ListRestoreStatus(config, logLevel, manifest, outPath, profile)
+	},
+}
+
 func init() {
 	restoreCmd.AddCommand(restoreStartCmd)
 	restoreCmd.AddCommand(restoreListCmd)
+	restoreCmd.AddCommand(restoreStatusCmd)
 	rootCmd.AddCommand(restoreCmd)
 
 	// Restore start flags
@@ -142,4 +182,14 @@ func init() {
 	// Add output file flag
 	restoreListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
 	restoreListCmd.MarkFlagFilename("out")
+
+	// Restore status flags
+	// manifest flag
+	restoreStatusCmd.Flags().StringP("manifest", "m", "", "Path to the restore manifest file (required)")
+	restoreStatusCmd.MarkFlagRequired("manifest")
+	restoreStatusCmd.MarkFlagFilename("manifest")
+
+	// out flag
+	restoreStatusCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
+	restoreStatusCmd.MarkFlagFilename("out")
 }

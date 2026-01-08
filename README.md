@@ -58,6 +58,13 @@ Help:
     - Flags:
       - `--out, -o` (filename) — output file (default: stdout).
     - Behavior: lists restore events from the database for the selected profile.
+  - status
+    - Command: `filebackup restore status`
+    - Handler: [`list.ListRestoreStatus`](internal/list/status.go)
+    - Flags:
+      - `--manifest, -m` (filename, required) — manifest file (CSV: `bucket,key,version_id`) (See: [filebackup file list --manifest](#file))
+      - `--out, -o` (filename) — output file (default: stdout).
+    - Behavior: checks the restore status of files in AWS Deep Archive in the provided manifest.
 
 ### file
 - Top-level: [`cmd/file.go`](cmd/file.go)
