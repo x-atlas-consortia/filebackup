@@ -115,8 +115,7 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, e
 
 	// Generate the encryption key
 	salt := make([]byte, 16)
-	n, err := inputFile.Read(salt)
-	if err != nil || n != 16 {
+	if _, err := io.ReadFull(inputFile, salt); err != nil {
 		return "", fmt.Errorf("failed to read salt from input file: %w", err)
 	}
 	key := core.NewArgon2IDKey(secret, salt)
@@ -136,12 +135,12 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, e
 		default:
 		}
 
-		// Read the nonce
+		// Read the nonce (ensure full read)
 		nonce := make([]byte, aesgcm.NonceSize())
-		n, err := inputFile.Read(nonce)
-		if err != nil || n != len(nonce) {
+		if _, err := io.ReadFull(inputFile, nonce); err != nil {
+			// io.ReadFull returns io.EOF if no bytes were read (end of file)
+			// and io.ErrUnexpectedEOF for partial reads.
 			if err == io.EOF {
-				// Reached end of file
 				break
 			}
 			return "", fmt.Errorf("failed to read nonce from input file: %w", err)
@@ -149,16 +148,17 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, e
 
 		// Read the length of the ciphertext
 		lenBuf := make([]byte, 8)
-		n, err = inputFile.Read(lenBuf)
-		if err != nil || n != len(lenBuf) {
+		if _, err := io.ReadFull(inputFile, lenBuf); err != nil {
 			return "", fmt.Errorf("failed to read ciphertext length from input file: %w", err)
 		}
 		cypherLength := binary.LittleEndian.Uint64(lenBuf)
 
 		// Read the ciphertext
+		if cypherLength == 0 {
+			return "", fmt.Errorf("ciphertext length is zero")
+		}
 		ciphertext := make([]byte, cypherLength)
-		n, err = inputFile.Read(ciphertext)
-		if err != nil || uint64(n) != cypherLength {
+		if _, err := io.ReadFull(inputFile, ciphertext); err != nil {
 			return "", fmt.Errorf("failed to read ciphertext from input file: %w", err)
 		}
 
@@ -169,11 +169,12 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, e
 		}
 
 		// Update the checksum
-		checksumHash.Write(plaintext)
+		if _, err := checksumHash.Write(plaintext); err != nil {
+			return "", fmt.Errorf("failed to update checksum: %w", err)
+		}
 
 		// Write the plaintext to the output file
-		_, err = outputFile.Write(plaintext)
-		if err != nil {
+		if _, err := outputFile.Write(plaintext); err != nil {
 			return "", fmt.Errorf("failed to write plaintext to output file: %w", err)
 		}
 	}

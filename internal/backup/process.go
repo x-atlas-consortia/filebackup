@@ -113,7 +113,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 func encryptFile(ctx context.Context, inPath, outPath, secret string) (string, error) {
 	// 64GB Limit, NIST Special Publication 800-38D section 5.2.1.1)
 	// Limit in crypto library is 2**31 - 1 byte
-	chunkSize := 1 << 30 // 1GB
+	chunkSize := 16 << 20 // 16 MiB
 	salt, err := core.GenerateRandomBytes(16)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate salt: %w", err)
@@ -249,10 +249,9 @@ func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash 
 		return fmt.Errorf("failed to seek to start of encrypted file: %w", err)
 	}
 
-	// Read the salt from the beginning of the file
-	salt := make([]byte, 16)
-	if _, err := io.ReadFull(encFile, salt); err != nil {
-		return fmt.Errorf("failed to read salt from encrypted file: %w", err)
+	// Skip the salt (16 bytes) written at the start of the file
+	if _, err := encFile.Seek(16, io.SeekCurrent); err != nil {
+		return fmt.Errorf("failed to skip salt in encrypted file: %w", err)
 	}
 
 	for {
@@ -264,7 +263,7 @@ func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash 
 		}
 
 		// Read the nonce
-		nonce := make([]byte, 12) // AES-GCM standard nonce size
+		nonce := make([]byte, aesgcm.NonceSize())
 		if _, err := io.ReadFull(encFile, nonce); err != nil {
 			if err == io.EOF {
 				// Reached end of file
