@@ -327,17 +327,50 @@ type GetFilesResultItem struct {
 // GetFiles retrieves the latest versions of files under a given path prefix up to a specified time
 func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) ([]GetFilesResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
-		SELECT path, size, last_modified_at, aws_version_id
-		FROM files
-		WHERE (path, last_modified_at) IN (
-			SELECT path, MAX(last_modified_at)
-			FROM files
-			WHERE path LIKE ? AND last_modified_at <= ?
-			GROUP BY path
-		);
+        SELECT path, size, last_modified_at, aws_version_id
+        FROM (
+            SELECT path, size, last_modified_at, aws_version_id,
+                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid ASC) AS rn
+            FROM files
+            WHERE path LIKE ? AND last_modified_at <= ?
+        )
+        WHERE rn = 1;
 	`, pathPrefix+"%", time)
 	if err != nil {
 		return nil, fmt.Errorf("error querying files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []GetFilesResultItem
+	for rows.Next() {
+		var file GetFilesResultItem
+		if err := rows.Scan(&file.Path, &file.Size, &file.LastModifiedAt, &file.VersionID); err != nil {
+			return nil, fmt.Errorf("error scanning file row: %w", err)
+		}
+		files = append(files, file)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over file rows: %w", err)
+	}
+
+	return files, nil
+}
+
+func (d *Database) GetLatestRandomFiles(ctx context.Context, number int) ([]GetFilesResultItem, error) {
+	rows, err := d.db.QueryContext(ctx, `
+        SELECT path, size, last_modified_at, aws_version_id
+        FROM (
+            SELECT path, size, last_modified_at, aws_version_id,
+                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid ASC) AS rn
+            FROM files
+        )
+        WHERE rn = 1
+        ORDER BY RANDOM()
+        LIMIT ?;
+	`, number)
+	if err != nil {
+		return nil, fmt.Errorf("error querying random files: %w", err)
 	}
 	defer rows.Close()
 
