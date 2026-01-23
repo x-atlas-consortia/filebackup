@@ -103,6 +103,16 @@ var restoreListCmd = &cobra.Command{
 			return err
 		}
 
+		if aws.IsS3Path(outPath) {
+			bucket, _, err := aws.ParseS3Path(outPath)
+			if err != nil {
+				return err
+			}
+			if bucket != config.AWSS3Bucket {
+				return errors.New("output S3 bucket does not match configured backup bucket")
+			}
+		}
+
 		profile, ok := cmd.Context().Value("profile").(string)
 		if !ok {
 			panic("profile not found in context")
@@ -144,6 +154,16 @@ var restoreStatusCmd = &cobra.Command{
 		outPath, err := cmd.Flags().GetString("out")
 		if err != nil {
 			return err
+		}
+
+		if aws.IsS3Path(outPath) {
+			bucket, _, err := aws.ParseS3Path(outPath)
+			if err != nil {
+				return err
+			}
+			if bucket != config.AWSS3Bucket {
+				return errors.New("output S3 bucket does not match configured backup bucket")
+			}
 		}
 
 		// Implementation for restore status would go here

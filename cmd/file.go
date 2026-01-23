@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 	"github.com/x-atlas-consortia/filebackup/internal/list"
 )
@@ -58,6 +60,16 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
+		if aws.IsS3Path(outPath) {
+			bucket, _, err := aws.ParseS3Path(outPath)
+			if err != nil {
+				return err
+			}
+			if bucket != config.AWSS3Bucket {
+				return errors.New("output S3 bucket does not match configured backup bucket")
+			}
+		}
+
 		manifest, err := cmd.Flags().GetBool("manifest")
 		if err != nil {
 			return err
@@ -94,6 +106,16 @@ var filesRandomCmd = &cobra.Command{
 		outPath, err := cmd.Flags().GetString("out")
 		if err != nil {
 			return err
+		}
+
+		if aws.IsS3Path(outPath) {
+			bucket, _, err := aws.ParseS3Path(outPath)
+			if err != nil {
+				return err
+			}
+			if bucket != config.AWSS3Bucket {
+				return errors.New("output S3 bucket does not match configured backup bucket")
+			}
 		}
 
 		manifest, err := cmd.Flags().GetBool("manifest")
