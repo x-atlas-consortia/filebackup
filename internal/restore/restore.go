@@ -15,7 +15,7 @@ import (
 )
 
 // Restore performs the file restore process using the provided configuration and manifest.
-func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir, profile string, maxWorkers int) error {
+func Restore(ctx context.Context, config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir, profile string, maxWorkers int) error {
 	startTime := time.Now()
 
 	// Setup logger
@@ -26,7 +26,7 @@ func Restore(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestI
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Create a temp directory

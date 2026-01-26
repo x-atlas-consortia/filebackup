@@ -15,7 +15,7 @@ import (
 )
 
 // ListRestores lists all restore events from the database and writes them to the specified output path or stdout
-func ListRestores(config core.Config, logLevel slog.Leveler, outPath, profile string) error {
+func ListRestores(ctx context.Context, config core.Config, logLevel slog.Leveler, outPath, profile string) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("restore-list", profile, logLevel)
 	if err != nil {
@@ -24,7 +24,7 @@ func ListRestores(config core.Config, logLevel slog.Leveler, outPath, profile st
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Read mode database

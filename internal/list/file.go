@@ -15,7 +15,7 @@ import (
 )
 
 // ListFiles lists all files under a specified path prefix from the database and writes them to the specified output path or stdout
-func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath, profile string, timestamp time.Time, manifest bool) error {
+func ListFiles(ctx context.Context, config core.Config, logLevel slog.Leveler, listPath, outPath, profile string, timestamp time.Time, manifest bool) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("file-list", profile, logLevel)
 	if err != nil {
@@ -24,7 +24,7 @@ func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath, pro
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Read mode database
@@ -158,7 +158,7 @@ func ListFiles(config core.Config, logLevel slog.Leveler, listPath, outPath, pro
 }
 
 // ListRandomFiles lists a specified number of random files from the database and writes them to the specified output path or stdout
-func ListRandomFiles(config core.Config, logLevel slog.Leveler, outPath, profile string, manifest bool, number int) error {
+func ListRandomFiles(ctx context.Context, config core.Config, logLevel slog.Leveler, outPath, profile string, manifest bool, number int) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("file-random", profile, logLevel)
 	if err != nil {
@@ -167,7 +167,7 @@ func ListRandomFiles(config core.Config, logLevel slog.Leveler, outPath, profile
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Read mode database

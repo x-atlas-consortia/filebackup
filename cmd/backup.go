@@ -69,7 +69,7 @@ var backupStartCmd = &cobra.Command{
 			return errors.New("max-workers cannot be greater than the number of CPU cores")
 		}
 
-		return backup.Backup(config, logLevel, details, tempDir, profile, directories, maxWorkers)
+		return backup.Backup(cmd.Context(), config, logLevel, details, tempDir, profile, directories, maxWorkers)
 	},
 }
 
@@ -107,7 +107,7 @@ var backupListCmd = &cobra.Command{
 			}
 		}
 
-		return list.ListBackups(config, logLevel, outPath, profile)
+		return list.ListBackups(cmd.Context(), config, logLevel, outPath, profile)
 	},
 }
 

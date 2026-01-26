@@ -97,7 +97,7 @@ var restoreStartCmd = &cobra.Command{
 			return errors.New("max-workers cannot be greater than the number of CPU cores")
 		}
 
-		return restore.Restore(config, logLevel, manifest, outDir, details, tempDir, profile, maxWorkers)
+		return restore.Restore(cmd.Context(), config, logLevel, manifest, outDir, details, tempDir, profile, maxWorkers)
 	},
 }
 
@@ -135,7 +135,7 @@ var restoreListCmd = &cobra.Command{
 			panic("profile not found in context")
 		}
 
-		return list.ListRestores(config, logLevel, outPath, profile)
+		return list.ListRestores(cmd.Context(), config, logLevel, outPath, profile)
 	},
 }
 
@@ -184,7 +184,7 @@ var restoreStatusCmd = &cobra.Command{
 		}
 
 		// Implementation for restore status would go here
-		return list.ListRestoreStatus(config, logLevel, manifest, outPath, profile)
+		return list.ListRestoreStatus(cmd.Context(), config, logLevel, manifest, outPath, profile)
 	},
 }
 

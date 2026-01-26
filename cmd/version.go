@@ -54,7 +54,7 @@ var versionListCmd = &cobra.Command{
 			}
 		}
 
-		return list.ListVersions(config, logLevel, filePath, outPath, profile)
+		return list.ListVersions(cmd.Context(), config, logLevel, filePath, outPath, profile)
 	},
 }
 

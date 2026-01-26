@@ -15,7 +15,7 @@ import (
 )
 
 // ListVersions lists all versions of a specified file from the database and writes them to the specified output path or stdout
-func ListVersions(config core.Config, logLevel slog.Leveler, filePath, outPath, profile string) error {
+func ListVersions(ctx context.Context, config core.Config, logLevel slog.Leveler, filePath, outPath, profile string) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("version-list", profile, logLevel)
 	if err != nil {
@@ -24,7 +24,7 @@ func ListVersions(config core.Config, logLevel slog.Leveler, filePath, outPath, 
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Read mode database

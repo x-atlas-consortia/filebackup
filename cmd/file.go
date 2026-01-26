@@ -75,7 +75,7 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListFiles(config, logLevel, dirPath, outPath, profile, t, manifest)
+		return list.ListFiles(cmd.Context(), config, logLevel, dirPath, outPath, profile, t, manifest)
 	},
 }
 
@@ -123,7 +123,7 @@ var filesRandomCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListRandomFiles(config, logLevel, outPath, profile, manifest, number)
+		return list.ListRandomFiles(cmd.Context(), config, logLevel, outPath, profile, manifest, number)
 	},
 }
 
