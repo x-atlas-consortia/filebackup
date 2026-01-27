@@ -137,9 +137,6 @@ func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, deta
 	fmt.Fprintf(logWriter, "time=%s msg=\"Backup process completed\" files=%d duration=%.2f seconds\n",
 		time.Now().Format(time.RFC3339), numFilesInserted, time.Since(startTime).Seconds())
 
-	// Wait for everything to flush
-	time.Sleep(5 * time.Second)
-
 	return nil
 }
 
