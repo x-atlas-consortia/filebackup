@@ -160,10 +160,26 @@ func (d *Database) Reindex(ctx context.Context) error {
 
 // Close closes the database connection and releases the lock
 func (d *Database) Close(ctx context.Context) error {
-	var walErr, dbErr, lockErr error
+	var walErr, stmtErr, dbErr, lockErr error
 
 	if d.db != nil && !d.readonly {
 		_, walErr = d.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE);")
+	}
+
+	// Close prepared statements (important so driver can fully release file handles)
+	if d.fileExistsStmt != nil {
+		if err := d.fileExistsStmt.Close(); err != nil {
+			stmtErr = fmt.Errorf("error closing fileExistsStmt: %w", err)
+		}
+	}
+	if d.sha256Stmt != nil {
+		if err := d.sha256Stmt.Close(); err != nil {
+			if stmtErr == nil {
+				stmtErr = fmt.Errorf("error closing sha256Stmt: %w", err)
+			} else {
+				stmtErr = fmt.Errorf("%v; error closing sha256Stmt: %w", stmtErr, err)
+			}
+		}
 	}
 
 	// Close database connection
@@ -181,6 +197,9 @@ func (d *Database) Close(ctx context.Context) error {
 	// Return the first error encountered
 	if walErr != nil {
 		return walErr
+	}
+	if stmtErr != nil {
+		return stmtErr
 	}
 	if dbErr != nil {
 		return dbErr
