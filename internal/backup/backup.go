@@ -16,7 +16,7 @@ import (
 )
 
 // Backup performs the backup process based on the provided configuration and parameters.
-func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile string, directories []string, maxWorkers int) error {
+func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, details, tempDir, profile string, directories []string, maxWorkers int) error {
 	startTime := time.Now()
 
 	// Setup logger
@@ -27,7 +27,7 @@ func Backup(config core.Config, logLevel slog.Leveler, details, tempDir, profile
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Create a temp directory

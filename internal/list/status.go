@@ -2,16 +2,19 @@ package list
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 )
 
 // ListRestoreStatus lists the restore status of files in the provided manifest and writes the output to the specified path or stdout.
-func ListRestoreStatus(config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outPath, profile string) error {
+func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outPath, profile string) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("restore-status", profile, logLevel)
 	if err != nil {
@@ -20,7 +23,7 @@ func ListRestoreStatus(config core.Config, logLevel slog.Leveler, manifest []aws
 	}
 
 	// Setup context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	logger.Info("Starting restore status listing",
@@ -41,9 +44,20 @@ func ListRestoreStatus(config core.Config, logLevel slog.Leveler, manifest []aws
 	}
 
 	// Determine output writer
+	uploadToS3 := false
 	var writer io.Writer
 	if outPath == "" {
 		writer = os.Stdout
+	} else if aws.IsS3Path(outPath) {
+		// create a temporary local file to write the output
+		tempFile, err := os.CreateTemp("", "restore_status_*.txt")
+		if err != nil {
+			logger.Error("Error creating temporary file for S3 upload", slog.String("error", err.Error()))
+			return err
+		}
+		defer os.Remove(tempFile.Name())
+		uploadToS3 = true
+		writer = tempFile
 	} else {
 		outFile, err := os.Create(outPath)
 		if err != nil {
@@ -55,11 +69,15 @@ func ListRestoreStatus(config core.Config, logLevel slog.Leveler, manifest []aws
 	}
 
 	// Iterate over manifest items and get their restore status
+	numRestored := 0
+	numNotRestored := 0
+	numErrors := 0
 	for _, item := range manifest {
 		restored, expiry, err := manager.ObjectRestoreStatus(ctx, item.Key)
 		if err != nil {
 			writer.Write([]byte(item.Key + ": Error retrieving status: " + err.Error() + "\n"))
 			logger.Error("Error retrieving restore status", slog.String("item", item.Key), slog.String("error", err.Error()))
+			numErrors++
 			continue
 		}
 		var status string
@@ -73,9 +91,52 @@ func ListRestoreStatus(config core.Config, logLevel slog.Leveler, manifest []aws
 		}
 		logger.Info("Retrieved restore status", slog.String("item", item.Key), slog.String("status", status))
 		writer.Write([]byte(item.Key + ": " + status + "\n"))
+
+		if restored {
+			numRestored++
+		} else {
+			numNotRestored++
+		}
 	}
 
-	logger.Info("Completed restore status listing")
+	// If output is to S3, upload the temporary file
+	if uploadToS3 {
+		f := writer.(*os.File)
+
+		// ensure all data is flushed and file descriptor released before upload
+		if err := f.Sync(); err != nil {
+			logger.Error("Error syncing temp file", slog.String("error", err.Error()))
+			return err
+		}
+		if err := f.Close(); err != nil {
+			logger.Error("Error closing temp file before upload", slog.String("error", err.Error()))
+			return err
+		}
+
+		tempFilePath := f.Name()
+		_, key, err := aws.ParseS3Path(outPath)
+		if err != nil {
+			logger.Error("Error parsing S3 path", slog.String("error", err.Error()))
+			return err
+		}
+
+		_, err = manager.UploadFile(ctx, tempFilePath, key, types.StorageClassStandard, time.Now().UTC())
+		if err != nil {
+			logger.Error("Error uploading restore status file to S3", slog.String("error", err.Error()))
+			return err
+		}
+
+		msg := fmt.Sprintf("Successfully uploaded restore status to S3: bucket %s, key %s", config.AWSS3Bucket, key)
+		fmt.Println(msg)
+		return nil
+	}
+
+	if writer != os.Stdout {
+		msg := fmt.Sprintf("Successfully wrote restore status to file: %s", outPath)
+		fmt.Println(msg)
+	}
+
+	fmt.Printf("Restore status summary: %d restored, %d not restored, %d errors\n", numRestored, numNotRestored, numErrors)
 
 	return nil
 }

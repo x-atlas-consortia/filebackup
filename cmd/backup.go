@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
+	"github.com/x-atlas-consortia/filebackup/internal/aws"
 	"github.com/x-atlas-consortia/filebackup/internal/backup"
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 	"github.com/x-atlas-consortia/filebackup/internal/list"
@@ -68,7 +69,7 @@ var backupStartCmd = &cobra.Command{
 			return errors.New("max-workers cannot be greater than the number of CPU cores")
 		}
 
-		return backup.Backup(config, logLevel, details, tempDir, profile, directories, maxWorkers)
+		return backup.Backup(cmd.Context(), config, logLevel, details, tempDir, profile, directories, maxWorkers)
 	},
 }
 
@@ -96,7 +97,17 @@ var backupListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListBackups(config, logLevel, outPath, profile)
+		if aws.IsS3Path(outPath) {
+			bucket, _, err := aws.ParseS3Path(outPath)
+			if err != nil {
+				return err
+			}
+			if bucket != config.AWSS3Bucket {
+				return errors.New("output S3 bucket does not match configured backup bucket")
+			}
+		}
+
+		return list.ListBackups(cmd.Context(), config, logLevel, outPath, profile)
 	},
 }
 
