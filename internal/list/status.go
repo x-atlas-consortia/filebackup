@@ -72,11 +72,15 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 	}
 
 	// Iterate over manifest items and get their restore status
+	numRestored := 0
+	numNotRestored := 0
+	numErrors := 0
 	for _, item := range manifest {
 		restored, expiry, err := manager.ObjectRestoreStatus(ctx, item.Key)
 		if err != nil {
 			writer.Write([]byte(item.Key + ": Error retrieving status: " + err.Error() + "\n"))
 			logger.Error("Error retrieving restore status", slog.String("item", item.Key), slog.String("error", err.Error()))
+			numErrors++
 			continue
 		}
 		var status string
@@ -90,6 +94,12 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 		}
 		logger.Info("Retrieved restore status", slog.String("item", item.Key), slog.String("status", status))
 		writer.Write([]byte(item.Key + ": " + status + "\n"))
+
+		if restored {
+			numRestored++
+		} else {
+			numNotRestored++
+		}
 	}
 
 	// If output is to S3, upload the temporary file
@@ -116,6 +126,8 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 		msg := fmt.Sprintf("Successfully wrote restore status to file: %s", outPath)
 		fmt.Println(msg)
 	}
+
+	fmt.Printf("Restore status summary: %d restored, %d not restored, %d errors\n", numRestored, numNotRestored, numErrors)
 
 	return nil
 }
