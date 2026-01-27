@@ -55,10 +55,7 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 			logger.Error("Error creating temporary file for S3 upload", slog.String("error", err.Error()))
 			return err
 		}
-		defer func() {
-			tempFile.Close()
-			os.Remove(tempFile.Name())
-		}()
+		defer os.Remove(tempFile.Name())
 		uploadToS3 = true
 		writer = tempFile
 	} else {
@@ -104,7 +101,19 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 
 	// If output is to S3, upload the temporary file
 	if uploadToS3 {
-		tempFilePath := writer.(*os.File).Name()
+		f := writer.(*os.File)
+
+		// ensure all data is flushed and file descriptor released before upload
+		if err := f.Sync(); err != nil {
+			logger.Error("Error syncing temp file", slog.String("error", err.Error()))
+			return err
+		}
+		if err := f.Close(); err != nil {
+			logger.Error("Error closing temp file before upload", slog.String("error", err.Error()))
+			return err
+		}
+
+		tempFilePath := f.Name()
 		_, key, err := aws.ParseS3Path(outPath)
 		if err != nil {
 			logger.Error("Error parsing S3 path", slog.String("error", err.Error()))
