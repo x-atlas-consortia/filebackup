@@ -13,10 +13,11 @@ import (
 )
 
 // ObjectRestoreStatus returns the raw Restore header, whether a restore is ongoing, and optional expiry time.
-func (m *AWSS3FileManager) ObjectRestoreStatus(ctx context.Context, objectKey string) (restored bool, expiry *time.Time, err error) {
+func (m *AWSS3FileManager) ObjectRestoreStatus(ctx context.Context, objectKey string, versionID string) (restored bool, expiry *time.Time, err error) {
 	out, err := m.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(m.bucket),
-		Key:    aws.String(objectKey),
+		Bucket:    aws.String(m.bucket),
+		Key:       aws.String(objectKey),
+		VersionId: aws.String(versionID),
 	})
 	if err != nil {
 		return false, nil, err

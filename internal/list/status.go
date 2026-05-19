@@ -73,7 +73,7 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 	numNotRestored := 0
 	numErrors := 0
 	for _, item := range manifest {
-		restored, expiry, err := manager.ObjectRestoreStatus(ctx, item.Key)
+		restored, expiry, err := manager.ObjectRestoreStatus(ctx, item.Key, item.VersionID)
 		if err != nil {
 			writer.Write([]byte(item.Key + ": Error retrieving status: " + err.Error() + "\n"))
 			logger.Error("Error retrieving restore status", slog.String("item", item.Key), slog.String("error", err.Error()))
