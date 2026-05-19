@@ -163,6 +163,15 @@ var restoreStatusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if internalaws.IsS3Path(manifestPath) {
+			// Download manifest from S3 to temp location
+			manifestPath, err = downloadManifestFromS3(cmd.Context(), config, manifestPath, os.TempDir())
+			if err != nil {
+				return err
+			}
+			defer os.Remove(manifestPath)
+		}
+
 		manifest, err := internalaws.ParseManifestFile(manifestPath)
 		if err != nil {
 			return err
