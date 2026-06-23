@@ -9,6 +9,8 @@ bin/
 .DS_Store
 .idea/
 .vscode/
+.ignore
+*.lua
 
 logs/
 tmp/
