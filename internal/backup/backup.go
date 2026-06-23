@@ -127,7 +127,7 @@ func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, deta
 
 	// Upload database to S3 if any files were inserted
 	dbName := filepath.Base(dbPath)
-	dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
+	dbVersionID, err := uploader.UploadFile(ctx, dbPath, dbPath, dbName, types.StorageClassStandard, time.Now().UTC())
 	if err != nil {
 		logger.Error("Failed to upload database to S3", slog.String("error", err.Error()))
 	} else {

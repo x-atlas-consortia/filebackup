@@ -126,7 +126,7 @@ func ListVersions(ctx context.Context, config core.Config, logLevel slog.Leveler
 			return err
 		}
 
-		_, err = manager.UploadFile(ctx, tempFilePath, key, types.StorageClassStandard, time.Now().UTC())
+		_, err = manager.UploadFile(ctx, tempFilePath, outPath, key, types.StorageClassStandard, time.Now().UTC())
 		if err != nil {
 			logger.Error("Error uploading version list to S3", slog.String("error", err.Error()))
 			return err

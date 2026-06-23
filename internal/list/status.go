@@ -120,7 +120,7 @@ func ListRestoreStatus(ctx context.Context, config core.Config, logLevel slog.Le
 			return err
 		}
 
-		_, err = manager.UploadFile(ctx, tempFilePath, key, types.StorageClassStandard, time.Now().UTC())
+		_, err = manager.UploadFile(ctx, tempFilePath, outPath, key, types.StorageClassStandard, time.Now().UTC())
 		if err != nil {
 			logger.Error("Error uploading restore status file to S3", slog.String("error", err.Error()))
 			return err
