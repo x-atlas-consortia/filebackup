@@ -34,4 +34,4 @@ COPY internal ./internal
 # Define volume for output
 VOLUME /dist
 
-CMD ["/bin/sh", "-c", "CGO_ENABLED=1 GOOS=linux go build -o /dist/filebackup main.go"]
+CMD ["/bin/sh", "-c", "CGO_ENABLED=1 GOOS=linux go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o /dist/filebackup ./main.go"]

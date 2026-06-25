@@ -59,7 +59,7 @@ type AWSS3FileManager struct {
 }
 
 // UploadFile uploads a file to S3 with the specified storage class and metadata.
-func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey string, storageClass types.StorageClass, lastModifiedAt time.Time) (string, error) {
+func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, originalPath, objectKey string, storageClass types.StorageClass, lastModifiedAt time.Time) (string, error) {
 	// Open the file for reading
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -77,6 +77,7 @@ func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey s
 	m.logger.Debug("Uploading file to S3 from path",
 		slog.String("bucket", m.bucket),
 		slog.String("filePath", filePath),
+		slog.String("originalPath", originalPath),
 		slog.String("objectKey", objectKey),
 		slog.Int64("fileSize", fileSize))
 
@@ -107,7 +108,7 @@ func (m *AWSS3FileManager) UploadFile(ctx context.Context, filePath, objectKey s
 		ChecksumAlgorithm: types.ChecksumAlgorithmCrc64nvme,
 		Metadata: map[string]string{
 			"UploadedBy":     "x-atlas-consortia/filebackup",
-			"OriginalPath":   filePath,
+			"OriginalPath":   originalPath,
 			"LastModifiedAt": lastModifiedAt.Format(time.RFC3339),
 		},
 	})

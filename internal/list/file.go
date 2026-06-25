@@ -138,7 +138,7 @@ func ListFiles(ctx context.Context, config core.Config, logLevel slog.Leveler, l
 			return err
 		}
 
-		_, err = manager.UploadFile(ctx, tempFilePath, key, types.StorageClassStandard, time.Now().UTC())
+		_, err = manager.UploadFile(ctx, tempFilePath, outPath, key, types.StorageClassStandard, time.Now().UTC())
 		if err != nil {
 			logger.Error("Error uploading file list to S3", slog.String("error", err.Error()))
 			return err
@@ -281,7 +281,7 @@ func ListRandomFiles(ctx context.Context, config core.Config, logLevel slog.Leve
 			return err
 		}
 
-		_, err = manager.UploadFile(ctx, tempFilePath, key, types.StorageClassStandard, time.Now().UTC())
+		_, err = manager.UploadFile(ctx, tempFilePath, outPath, key, types.StorageClassStandard, time.Now().UTC())
 		if err != nil {
 			logger.Error("Error uploading file random list to S3", slog.String("error", err.Error()))
 			return err

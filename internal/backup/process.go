@@ -92,7 +92,7 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	defer os.Remove(encFilePath)
 
 	// Upload to S3
-	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath, types.StorageClassDeepArchive, lastModifiedAt)
+	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath, filePath, types.StorageClassDeepArchive, lastModifiedAt)
 	if err != nil {
 		return false, fmt.Errorf("failed to upload file %s to S3: %w", filePath, err)
 	}
