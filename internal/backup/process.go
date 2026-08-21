@@ -20,7 +20,7 @@ import (
 )
 
 // processFileWorker processes files: encrypts, uploads to S3, and sends info for database insertion.
-func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem) {
+func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem, walkedPathCh chan<- string) {
 	// Read mode database
 	readOnlyDB, err := database.New(ctx, dbPath, true)
 	if err != nil {
@@ -39,6 +39,14 @@ func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret,
 			if !ok {
 				// No more files
 				logger.Info("No more files to process, shutting down")
+				return
+			}
+
+			// Mark as seen regardless of upload outcome: the file still exists on disk
+			// even if processing it below fails, so it must not be flagged as deleted.
+			select {
+			case walkedPathCh <- filePath:
+			case <-ctx.Done():
 				return
 			}
 

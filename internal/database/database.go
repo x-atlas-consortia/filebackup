@@ -64,6 +64,10 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 		return nil, err
 	}
 
+	// Pin to a single physical connection: walked_paths is a session-scoped TEMP TABLE,
+	// so all queries against it must share the same underlying SQLite connection.
+	db.SetMaxOpenConns(1)
+
 	// Verify the connection
 	err = db.Ping()
 	if err != nil {
@@ -93,6 +97,16 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 				os.Remove(lockFile.Name())
 			}
 			return nil, fmt.Errorf("error applying migrations: %w", err)
+		}
+
+		// walked_paths tracks which known files were seen during the current backup walk
+		if _, err := db.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS walked_paths (path TEXT PRIMARY KEY)`); err != nil {
+			db.Close()
+			if lockFile != nil {
+				lockFile.Close()
+				os.Remove(lockFile.Name())
+			}
+			return nil, fmt.Errorf("error creating walked_paths temp table: %w", err)
 		}
 	}
 
@@ -304,241 +318,4 @@ func (d *Database) Close(ctx context.Context) error {
 		return dbErr
 	}
 	return lockErr
-}
-
-// InsertEvent represents an event to be inserted into the database
-type InsertEvent struct {
-	Details   string
-	EndedAt   int64
-	StartedAt int64
-	Type      string
-}
-
-// InsertEvent inserts a new event into the database
-func (d *Database) InsertEvent(ctx context.Context, event InsertEvent) error {
-	stmt := `INSERT INTO events (details, ended_at, started_at, type)
-	         VALUES (?, ?, ?, ?)`
-
-	var details any
-	if strings.TrimSpace(event.Details) == "" {
-		details = nil // Inserts NULL
-	} else {
-		details = event.Details
-	}
-
-	_, err := d.db.ExecContext(ctx, stmt, details, event.EndedAt, event.StartedAt, event.Type)
-	if err != nil {
-		return fmt.Errorf("error inserting event: %w", err)
-	}
-
-	return nil
-}
-
-// InsertFileItem represents a file to be inserted into the database
-type InsertFileItem struct {
-	AWSVersionID   string
-	LastModifiedAt int64
-	Path           string
-	SHA256         string
-	Size           int64
-}
-
-// InsertFiles inserts multiple files into the database in a single transaction
-func (d *Database) InsertFiles(ctx context.Context, files []InsertFileItem) error {
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("error beginning transaction: %w", err)
-	}
-
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO files (path, aws_version_id, sha256, size, last_modified_at)
-		VALUES (?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("error preparing statement: %w", err)
-	}
-	defer stmt.Close()
-
-	for _, file := range files {
-		if _, err := stmt.ExecContext(ctx, file.Path, file.AWSVersionID, file.SHA256, file.Size, file.LastModifiedAt); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("error inserting file (%s): %w", file.Path, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error committing transaction: %w", err)
-	}
-
-	return nil
-}
-
-// DoesFileExist checks if a file with the given path, size, and last modified timestamp exists in the database
-func (d *Database) DoesFileExist(ctx context.Context, path string, size, lastModifiedAt int64) (bool, error) {
-	var count int
-	err := d.fileExistsStmt.QueryRowContext(ctx, path, size, lastModifiedAt).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("error checking if file exists: %w", err)
-	}
-	return count > 0, nil
-}
-
-// GetSHA256 retrieves the SHA-256 hash for a given file path and AWS version ID
-func (d *Database) GetSHA256(ctx context.Context, path, awsVersionID string) (string, error) {
-	var sha256 string
-	err := d.sha256Stmt.QueryRowContext(ctx, path, awsVersionID).Scan(&sha256)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil // No rows found
-		}
-		return "", fmt.Errorf("error querying SHA-256: %w", err)
-	}
-
-	return sha256, nil
-}
-
-// GetEventsResultItem represents a single event retrieved from the database
-type GetEventsResultItem struct {
-	Details   sql.NullString
-	EndedAt   int64
-	StartedAt int64
-}
-
-// GetEvents retrieves events of a specific type from the database
-func (d *Database) GetEvents(ctx context.Context, eventType string) ([]GetEventsResultItem, error) {
-	rows, err := d.db.QueryContext(ctx, `
-		SELECT started_at, ended_at, details
-		FROM events
-		WHERE type = ?
-		ORDER BY started_at DESC
-	`, eventType)
-	if err != nil {
-		return nil, fmt.Errorf("error querying backups: %w", err)
-	}
-	defer rows.Close()
-
-	var results []GetEventsResultItem
-	for rows.Next() {
-		var item GetEventsResultItem
-		if err := rows.Scan(&item.StartedAt, &item.EndedAt, &item.Details); err != nil {
-			return nil, fmt.Errorf("error scanning backup row: %w", err)
-		}
-		results = append(results, item)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over backup rows: %w", err)
-	}
-
-	return results, nil
-}
-
-// GetFilesResultItem represents a single file retrieved from the database
-type GetFilesResultItem struct {
-	LastModifiedAt int64
-	Path           string
-	Size           int64
-	VersionID      string
-}
-
-// GetFiles retrieves the latest versions of files under a given path prefix up to a specified time
-func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) ([]GetFilesResultItem, error) {
-	rows, err := d.db.QueryContext(ctx, `
-        SELECT path, size, last_modified_at, aws_version_id
-        FROM (
-            SELECT path, size, last_modified_at, aws_version_id,
-                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid ASC) AS rn
-            FROM files
-            WHERE path LIKE ? AND last_modified_at <= ?
-        )
-        WHERE rn = 1;
-	`, pathPrefix+"%", time)
-	if err != nil {
-		return nil, fmt.Errorf("error querying files: %w", err)
-	}
-	defer rows.Close()
-
-	var files []GetFilesResultItem
-	for rows.Next() {
-		var file GetFilesResultItem
-		if err := rows.Scan(&file.Path, &file.Size, &file.LastModifiedAt, &file.VersionID); err != nil {
-			return nil, fmt.Errorf("error scanning file row: %w", err)
-		}
-		files = append(files, file)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over file rows: %w", err)
-	}
-
-	return files, nil
-}
-
-func (d *Database) GetLatestRandomFiles(ctx context.Context, number int) ([]GetFilesResultItem, error) {
-	rows, err := d.db.QueryContext(ctx, `
-        SELECT path, size, last_modified_at, aws_version_id
-        FROM (
-            SELECT path, size, last_modified_at, aws_version_id,
-                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid ASC) AS rn
-            FROM files
-        )
-        WHERE rn = 1
-        ORDER BY RANDOM()
-        LIMIT ?;
-	`, number)
-	if err != nil {
-		return nil, fmt.Errorf("error querying random files: %w", err)
-	}
-	defer rows.Close()
-
-	var files []GetFilesResultItem
-	for rows.Next() {
-		var file GetFilesResultItem
-		if err := rows.Scan(&file.Path, &file.Size, &file.LastModifiedAt, &file.VersionID); err != nil {
-			return nil, fmt.Errorf("error scanning file row: %w", err)
-		}
-		files = append(files, file)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over file rows: %w", err)
-	}
-
-	return files, nil
-}
-
-// GetVersionsResultItem represents a single version of a file
-type GetVersionsResultItem struct {
-	LastModifiedAt int64
-	SHA256         string
-	Size           int64
-}
-
-// GetVersions retrieves all versions of a file identified by its path
-func (d *Database) GetVersions(ctx context.Context, filePath string) ([]GetVersionsResultItem, error) {
-	rows, err := d.db.QueryContext(ctx, `
-		SELECT last_modified_at, size, sha256
-		FROM files
-		WHERE path = ?
-		ORDER BY last_modified_at DESC
-	`, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("error querying versions: %w", err)
-	}
-	defer rows.Close()
-
-	var versions []GetVersionsResultItem
-	for rows.Next() {
-		var version GetVersionsResultItem
-		if err := rows.Scan(&version.LastModifiedAt, &version.Size, &version.SHA256); err != nil {
-			return nil, fmt.Errorf("error scanning version row: %w", err)
-		}
-		versions = append(versions, version)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over version rows: %w", err)
-	}
-
-	return versions, nil
 }
