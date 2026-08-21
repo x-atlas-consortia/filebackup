@@ -3,17 +3,31 @@ package database
 import (
 	"context"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-//go:embed schema.sql
-var schemaSQL string
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// pragmaSQL configures connection-level settings, re-applied on every write connection.
+const pragmaSQL = `
+PRAGMA journal_mode=WAL;        -- Enables concurrent reads
+PRAGMA foreign_keys=ON;         -- Enforce foreign key constraints
+PRAGMA synchronous=FULL;        -- Maximum durability (slower but safer)
+PRAGMA temp_store=MEMORY;       -- Store temp data in memory for performance
+PRAGMA mmap_size=268435456;     -- 256MB memory mapping for better performance
+PRAGMA cache_size=10000;        -- Larger cache for better performance
+PRAGMA integrity_check;         -- Enable additional integrity checks
+`
 
 // New initializes a new Database instance
 func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
@@ -61,15 +75,24 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 		return nil, err
 	}
 
-	// Execute the schema SQL file (only for write mode)
+	// Configure connection pragmas and apply pending schema migrations (only for write mode)
 	if !readonly {
-		if _, err := db.Exec(schemaSQL); err != nil {
+		if _, err := db.ExecContext(ctx, pragmaSQL); err != nil {
 			db.Close()
 			if lockFile != nil {
 				lockFile.Close()
 				os.Remove(lockFile.Name())
 			}
-			return nil, fmt.Errorf("error executing schema: %w", err)
+			return nil, fmt.Errorf("error setting pragmas: %w", err)
+		}
+
+		if err := runMigrations(ctx, db); err != nil {
+			db.Close()
+			if lockFile != nil {
+				lockFile.Close()
+				os.Remove(lockFile.Name())
+			}
+			return nil, fmt.Errorf("error applying migrations: %w", err)
 		}
 	}
 
@@ -110,6 +133,82 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 		readonly:       readonly,
 		sha256Stmt:     sha256Stmt,
 	}, nil
+}
+
+// runMigrations applies any embedded migration files newer than the database's recorded version.
+func runMigrations(ctx context.Context, db *sql.DB) error {
+	// We need the schema_migrations table to exist before we can check the current version.
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY,
+			applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)
+	`); err != nil {
+		return fmt.Errorf("error creating schema_migrations table: %w", err)
+	}
+
+	var currentVersion int
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&currentVersion); err != nil {
+		return fmt.Errorf("error reading current schema version: %w", err)
+	}
+
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("error reading migrations directory: %w", err)
+	}
+
+	type migration struct {
+		version int
+		name    string
+	}
+	var migrations []migration
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		prefix, _, ok := strings.Cut(entry.Name(), "_")
+		if !ok {
+			return fmt.Errorf("invalid migration filename %q: missing version prefix", entry.Name())
+		}
+		version, err := strconv.Atoi(prefix)
+		if err != nil {
+			return fmt.Errorf("invalid migration filename %q: %w", entry.Name(), err)
+		}
+		migrations = append(migrations, migration{version: version, name: entry.Name()})
+	}
+	sort.Slice(migrations, func(i, j int) bool { return migrations[i].version < migrations[j].version })
+
+	for _, m := range migrations {
+		if m.version <= currentVersion {
+			continue
+		}
+
+		contents, err := fs.ReadFile(migrationsFS, "migrations/"+m.name)
+		if err != nil {
+			return fmt.Errorf("error reading migration %q: %w", m.name, err)
+		}
+
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("error beginning transaction for migration %q: %w", m.name, err)
+		}
+
+		if _, err := tx.ExecContext(ctx, string(contents)); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("error applying migration %q: %w", m.name, err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, m.version); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("error recording migration %q: %w", m.name, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("error committing migration %q: %w", m.name, err)
+		}
+	}
+
+	return nil
 }
 
 // createLockFile creates a lock file at the specified path to prevent multiple writers
