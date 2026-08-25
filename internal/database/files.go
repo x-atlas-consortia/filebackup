@@ -187,13 +187,13 @@ func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) 
 	rows, err := d.db.QueryContext(ctx, `
         SELECT path, size, last_modified_at, aws_version_id
         FROM (
-            SELECT path, size, last_modified_at, aws_version_id,
-                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid ASC) AS rn
+            SELECT path, size, last_modified_at, aws_version_id, deleted_at,
+                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid DESC) AS rn
             FROM files
             WHERE path LIKE ? AND last_modified_at <= ?
         )
-        WHERE rn = 1;
-	`, pathPrefix+"%", time)
+        WHERE rn = 1 AND (deleted_at IS NULL OR deleted_at > ?);
+	`, pathPrefix+"%", time, time)
 	if err != nil {
 		return nil, fmt.Errorf("error querying files: %w", err)
 	}
@@ -215,15 +215,16 @@ func (d *Database) GetFiles(ctx context.Context, pathPrefix string, time int64) 
 	return files, nil
 }
 
+// GetLatestRandomFiles retrieves a random sample of currently active (non-deleted) files
 func (d *Database) GetLatestRandomFiles(ctx context.Context, number int) ([]GetFilesResultItem, error) {
 	rows, err := d.db.QueryContext(ctx, `
         SELECT path, size, last_modified_at, aws_version_id
         FROM (
-            SELECT path, size, last_modified_at, aws_version_id,
-                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid ASC) AS rn
+            SELECT path, size, last_modified_at, aws_version_id, deleted_at,
+                ROW_NUMBER() OVER (PARTITION BY path ORDER BY last_modified_at DESC, rowid DESC) AS rn
             FROM files
         )
-        WHERE rn = 1
+        WHERE rn = 1 AND deleted_at IS NULL
         ORDER BY RANDOM()
         LIMIT ?;
 	`, number)

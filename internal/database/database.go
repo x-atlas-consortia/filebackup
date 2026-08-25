@@ -114,7 +114,7 @@ func New(ctx context.Context, dsn string, readonly bool) (*Database, error) {
 	fileExistsStmt, err := db.PrepareContext(ctx, `
         SELECT COUNT(path)
         FROM files
-        WHERE path = ? AND size = ? AND last_modified_at = ?
+        WHERE path = ? AND size = ? AND last_modified_at = ? AND deleted_at IS NULL
 	`)
 	if err != nil {
 		db.Close()
