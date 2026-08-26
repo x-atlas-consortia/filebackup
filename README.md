@@ -73,7 +73,7 @@ Help:
     - Command: `filebackup file list`
     - Handler: [`list.ListFiles`](internal/list/file.go)
     - Flags:
-      - `--directory, -D` (dirname) — path prefix to list.
+      - `--directories, -D` (string slice) — path prefixes to list files under. If not specified, lists all files in the database.
       - `--time, -t` (RFC3339 string) — list files as of specific time (default now) (ex. 2023-01-01T00:00:00Z).
       - `--out, -o` (filename) — output file (default: stdout).
       - `--manifest, -m` (bool) — produce AWS S3 manifest-format output (`bucket,path,version_id`). This format is compatible with AWS S3 Batch Operations. Defaults to false.

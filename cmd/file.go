@@ -36,7 +36,7 @@ var filesListCmd = &cobra.Command{
 			panic("profile not found in context")
 		}
 
-		dirPath, err := cmd.Flags().GetString("directory")
+		dirPaths, err := cmd.Flags().GetStringSlice("directories")
 		if err != nil {
 			return err
 		}
@@ -75,7 +75,7 @@ var filesListCmd = &cobra.Command{
 			return err
 		}
 
-		return list.ListFiles(cmd.Context(), config, logLevel, dirPath, outPath, profile, t, manifest)
+		return list.ListFiles(cmd.Context(), config, logLevel, dirPaths, outPath, profile, t, manifest)
 	},
 }
 
@@ -133,9 +133,8 @@ func init() {
 	rootCmd.AddCommand(fileCmd)
 
 	// Files list flags
-	// path flag
-	filesListCmd.Flags().StringP("directory", "D", "", "Path of the directory to list files")
-	filesListCmd.MarkFlagDirname("directory")
+	// directories flag
+	filesListCmd.Flags().StringSliceP("directories", "D", []string{}, "List of directories to list files under (multiple -D flags allowed or comma-separated string; default: all)")
 
 	// out flag
 	filesListCmd.Flags().StringP("out", "o", "", "Path to the output file (default: stdout)")
