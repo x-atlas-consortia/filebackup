@@ -1,13 +1,3 @@
-PRAGMA journal_mode=WAL;        -- Enables concurrent reads
-PRAGMA foreign_keys=ON;         -- Enforce foreign key constraints
-PRAGMA synchronous=FULL;        -- Maximum durability (slower but safer)
-PRAGMA temp_store=MEMORY;       -- Store temp data in memory for performance
-PRAGMA mmap_size=268435456;     -- 256MB memory mapping for better performance
-PRAGMA cache_size=10000;        -- Larger cache for better performance
-
--- Enable additional integrity checks
-PRAGMA integrity_check;
-
 CREATE TABLE IF NOT EXISTS files (
     path TEXT NOT NULL CHECK(length(path) > 0),  -- No empty paths
     aws_version_id TEXT NOT NULL,

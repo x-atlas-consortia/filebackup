@@ -14,8 +14,8 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
 
-// ListFiles lists all files under a specified path prefix from the database and writes them to the specified output path or stdout
-func ListFiles(ctx context.Context, config core.Config, logLevel slog.Leveler, listPath, outPath, profile string, timestamp time.Time, manifest bool) error {
+// ListFiles lists all files under the given directories (or every path if none are given) from the database and writes them to the specified output path or stdout
+func ListFiles(ctx context.Context, config core.Config, logLevel slog.Leveler, directories []string, outPath, profile string, timestamp time.Time, manifest bool) error {
 	// Setup logger
 	logger, _, err := core.NewLogger("file-list", profile, logLevel)
 	if err != nil {
@@ -40,11 +40,21 @@ func ListFiles(ctx context.Context, config core.Config, logLevel slog.Leveler, l
 		}
 	}()
 
-	// Get files
-	files, err := readOnlyDB.GetFiles(ctx, listPath, timestamp.UTC().Unix())
-	if err != nil {
-		logger.Error("Error retrieving files from database", slog.String("error", err.Error()))
-		return nil
+	// Default to no prefix (list everything) if no directories were given
+	listPaths := directories
+	if len(listPaths) == 0 {
+		listPaths = []string{""}
+	}
+
+	// Get files under each directory
+	var files []database.GetFilesResultItem
+	for _, listPath := range listPaths {
+		dirFiles, err := readOnlyDB.GetFiles(ctx, listPath, timestamp.UTC().Unix())
+		if err != nil {
+			logger.Error("Error retrieving files from database", slog.String("directory", listPath), slog.String("error", err.Error()))
+			return nil
+		}
+		files = append(files, dirFiles...)
 	}
 
 	// Determine output writer

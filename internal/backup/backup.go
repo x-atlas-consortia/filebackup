@@ -61,14 +61,15 @@ func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, deta
 
 	// Create channel and start database file insert worker
 	fileInsertCh := make(chan database.InsertFileItem, 1000)
+	walkedPathCh := make(chan string, 1000)
 	dbReady := make(chan error, 1)
-	numFilesInsertedCh := make(chan int, 1)
+	dbResultCh := make(chan databaseWorkerResult, 1)
 	var dbInsertWg sync.WaitGroup
 
 	dbInsertWg.Go(func() {
-		numFilesInserted := databaseFileInsertWorker(ctx, logger, dbPath, fileInsertCh, dbReady)
-		numFilesInsertedCh <- numFilesInserted
-		close(numFilesInsertedCh)
+		result := databaseFileInsertWorker(ctx, logger, dbPath, directories, fileInsertCh, walkedPathCh, dbReady)
+		dbResultCh <- result
+		close(dbResultCh)
 	})
 
 	if err := <-dbReady; err != nil {
@@ -91,7 +92,7 @@ func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, deta
 		go func(id int) {
 			defer processWg.Done()
 			workerLogger := logger.With(slog.String("worker", fmt.Sprintf("process_file_%d", id)))
-			processFileWorker(ctx, workerLogger, dbPath, config.EncryptionSecret, tempDir, filesToProcessCh, uploader, fileInsertCh)
+			processFileWorker(ctx, workerLogger, dbPath, config.EncryptionSecret, tempDir, filesToProcessCh, uploader, fileInsertCh, walkedPathCh)
 		}(i)
 	}
 
@@ -110,13 +111,14 @@ func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, deta
 
 	// Close the database insert channel now that all processing is done
 	close(fileInsertCh)
+	close(walkedPathCh)
 
 	// Wait for the database worker to finish
 	logger.Info("Waiting for database worker to complete...")
 	dbInsertWg.Wait()
 	logger.Info("Database worker finished")
 
-	numFilesInserted := <-numFilesInsertedCh
+	dbResult := <-dbResultCh
 
 	// Insert backup event into the database
 	err = insertBackupEvent(ctx, dbPath, details, startTime, logger)
@@ -134,8 +136,8 @@ func Backup(ctx context.Context, config core.Config, logLevel slog.Leveler, deta
 		logger.Info("Database uploaded to S3", slog.String("version_id", dbVersionID))
 	}
 
-	fmt.Fprintf(logWriter, "time=%s msg=\"Backup process completed\" files=%d duration=%.2f seconds\n",
-		time.Now().Format(time.RFC3339), numFilesInserted, time.Since(startTime).Seconds())
+	fmt.Fprintf(logWriter, "time=%s msg=\"Backup process completed\" files=%d deleted=%d duration=%.2f seconds\n",
+		time.Now().Format(time.RFC3339), dbResult.FilesInserted, dbResult.FilesDeleted, time.Since(startTime).Seconds())
 
 	return nil
 }
