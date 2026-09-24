@@ -3,10 +3,7 @@ package backup
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +15,10 @@ import (
 	"github.com/x-atlas-consortia/filebackup/internal/core"
 	"github.com/x-atlas-consortia/filebackup/internal/database"
 )
+
+// chunkSize is the plaintext size of each encrypted chunk. 64GB limit (NIST SP 800-38D 5.2.1.1).
+// The Go crypto library limits a single AES-GCM seal to 2**31-1 bytes, so 16MiB chunks are used regardless.
+const chunkSize = 16 << 20 // 16 MiB
 
 // processFileWorker processes files: encrypts, uploads to S3, and sends info for database insertion.
 func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, tempDir string, filesCh <-chan string, uploader *aws.AWSS3FileManager, insertFileCh chan<- database.InsertFileItem, walkedPathCh chan<- string) {
@@ -42,7 +43,7 @@ func processFileWorker(ctx context.Context, logger *slog.Logger, dbPath, secret,
 				return
 			}
 
-			// Mark as seen regardless of upload outcome: the file still exists on disk
+			// Mark as seen regardless of upload outcome. The file still exists on disk
 			// even if processing it below fails, so it must not be flagged as deleted.
 			select {
 			case walkedPathCh <- filePath:
@@ -93,13 +94,11 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 		return false, fmt.Errorf("failed to generate random filename for encryption: %w", err)
 	}
 	encFilePath := filepath.Join(tempDir, encFileName+".enc")
+	defer os.Remove(encFilePath) // clean up whether encryption succeeds or fails
 	checksum, err := encryptFile(ctx, filePath, encFilePath, secret)
 	if err != nil {
 		return false, fmt.Errorf("failed to encrypt file %s: %w", filePath, err)
 	}
-	defer os.Remove(encFilePath)
-
-	// Upload to S3
 	awsVersionID, err := uploader.UploadFile(ctx, encFilePath, filePath, filePath, types.StorageClassDeepArchive, lastModifiedAt)
 	if err != nil {
 		return false, fmt.Errorf("failed to upload file %s to S3: %w", filePath, err)
@@ -117,201 +116,119 @@ func processFile(ctx context.Context, filePath, secret, tempDir string, db *data
 	return true, nil
 }
 
-// encryptFile encrypts the input file and writes the encrypted data to the output file.
+// encryptFile encrypts the input file and writes [header][chunks...] to the output file.
+// Each chunk is sealed with the serialized header as additional authenticated data, so
+// any change to the header (salt, Argon2 parameters, nonce prefix, or chunk size) is detected
+// on decryption.
 func encryptFile(ctx context.Context, inPath, outPath, secret string) (string, error) {
-	// 64GB Limit, NIST Special Publication 800-38D section 5.2.1.1)
-	// Limit in crypto library is 2**31 - 1 byte
-	chunkSize := 16 << 20 // 16 MiB
-	salt, err := core.GenerateRandomBytes(16)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate salt: %w", err)
-	}
-
-	// Generate the encryption key
-	key := core.NewArgon2IDKey(secret, salt)
-	aesgcm, err := core.NewAESGCMCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create AES-GCM cipher: %w", err)
-	}
-
-	// Open the input file for reading and the output file for writing
 	inputFile, err := os.Open(inPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open input file: %w", err)
 	}
 	defer inputFile.Close()
 
-	// Create the output file path
+	info, err := inputFile.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat input file: %w", err)
+	}
+	plaintextSize := info.Size()
+
+	salt, err := core.GenerateRandomBytes(16)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate salt: %w", err)
+	}
+	noncePrefix, err := core.GenerateRandomBytes(7)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate nonce prefix: %w", err)
+	}
+
+	key := core.NewArgon2IDKey(secret, salt, core.Argon2Time, core.Argon2MemoryKiB, core.Argon2Parallelism)
+	defer core.ZeroBytes(key) // removes this copy of the derived key once encryptFile returns
+	aesgcm, err := core.NewAESGCMCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create AES-GCM cipher: %w", err)
+	}
+
+	header := core.Header{
+		Salt:            salt,
+		Argon2Time:      core.Argon2Time,
+		Argon2MemoryKiB: core.Argon2MemoryKiB,
+		Argon2Threads:   core.Argon2Parallelism,
+		NoncePrefix:     noncePrefix,
+		ChunkSize:       chunkSize,
+	}
+	headerBytes := header.Bytes()
+
 	outputFile, err := os.Create(outPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outputFile.Close()
 
-	// Write the salt at the beginning of the output file
-	if _, err = outputFile.Write(salt); err != nil {
-		return "", fmt.Errorf("failed to write salt to output file: %w", err)
+	if _, err = outputFile.Write(headerBytes); err != nil {
+		return "", fmt.Errorf("failed to write header to output file: %w", err)
 	}
 
 	// Calculate the SHA256 hash of the original file for integrity verification
 	checksumHash := sha256.New()
+	numChunks := numChunksForSize(plaintextSize, chunkSize)
 
-	// Process the file in chunks
 	buffer := make([]byte, chunkSize)
-	for {
-		// Check if context in chunks
+	defer core.ZeroBytes(buffer) // clear any plaintext remaining in the buffer, particularly the last partial chunk
+	for chunkIndex := range numChunks {
+		// Check for cancellation between chunks
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		default:
 		}
 
-		// Read a chunk from the input file
-		bytesRead, err := inputFile.Read(buffer)
-		if err != nil {
-			if err == io.EOF {
-				// Reached end of file
-				break
-			}
+		n, err := io.ReadFull(inputFile, buffer)
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
 			return "", fmt.Errorf("error reading input file: %w", err)
 		}
+		plaintext := buffer[:n]
+		checksumHash.Write(plaintext)
 
-		// If we read fewer bytes than the buffer size, resize the buffer
-		if bytesRead < len(buffer) {
-			buffer = buffer[:bytesRead]
-		}
+		isLast := chunkIndex == numChunks-1
+		nonce := core.ChunkNonce(noncePrefix, chunkIndex, isLast)
+		// Seal appends the 16-byte GCM tag to the returned ciphertext, matching the
+		// on-disk chunk format of ciphertext || tag.
+		ciphertext := aesgcm.Seal(nil, nonce, plaintext, headerBytes)
 
-		// Update the checksum
-		checksumHash.Write(buffer)
-
-		// Generate a unique nonce for each chunk
-		nonce, err := core.GenerateRandomBytes(aesgcm.NonceSize())
-		if err != nil {
-			return "", fmt.Errorf("failed to generate nonce: %w", err)
-		}
-
-		// Encrypt the chunk
-		ciphertext := aesgcm.Seal(nil, nonce, buffer, nil)
-
-		// Format: [nonce][length of ciphertext as uint64][ciphertext]
-		// Write the nonce
-		if _, err = outputFile.Write(nonce); err != nil {
-			return "", fmt.Errorf("failed to write nonce: %w", err)
-		}
-
-		// Write the length of the ciphertext as a uint64 (8 bytes)
-		lengthBytes := make([]byte, 8)
-		binary.LittleEndian.PutUint64(lengthBytes, uint64(len(ciphertext)))
-		if _, err = outputFile.Write(lengthBytes); err != nil {
-			return "", fmt.Errorf("failed to write ciphertext length: %w", err)
-		}
-
-		// Write the ciphertext
 		if _, err = outputFile.Write(ciphertext); err != nil {
-			return "", fmt.Errorf("failed to write ciphertext: %w", err)
-		}
-
-		// If we read less than a full buffer, we've reached the end of the file
-		if bytesRead < chunkSize {
-			break
+			return "", fmt.Errorf("failed to write chunk %d: %w", chunkIndex, err)
 		}
 	}
 
-	// Integrity check
-	inputFile.Close()
 	checksum := checksumHash.Sum(nil)
-	err = checkIntegrity(ctx, outputFile, key, checksum)
-	if err != nil {
+
+	if err := checkIntegrity(ctx, outputFile, key, checksum); err != nil {
 		return "", fmt.Errorf("integrity check failed: %w", err)
 	}
 
 	return fmt.Sprintf("%x", checksum), nil
 }
 
-// checkIntegrity decrypts the encrypted file and verifies its SHA256 hash matches the expected hash.
-func checkIntegrity(ctx context.Context, encFile *os.File, encKey, expectedHash []byte) error {
-	// Recreate the AES-GCM cipher
-	block, err := aes.NewCipher(encKey)
-	if err != nil {
-		return fmt.Errorf("failed to create cipher: %w", err)
+// numChunksForSize returns the number of chunks a file of the given plaintext size splits into. Empty files still
+// produce exactly one empty chunk, so every encrypted file has at least one authenticated chunk following the header.
+func numChunksForSize(size int64, chunkSize int) uint32 {
+	if size <= 0 {
+		return 1
 	}
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return fmt.Errorf("failed to create GCM: %w", err)
+	n := size / int64(chunkSize)
+	if size%int64(chunkSize) != 0 {
+		n++
 	}
+	return uint32(n)
+}
 
-	// Create the decrypted file. Append .dec to the encrypted file path
-	decFilePath := encFile.Name() + ".dec"
-	decFile, err := os.Create(decFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to create decrypted file: %w", err)
-	}
-	defer func() {
-		// Close and remove the decrypted file
-		_ = decFile.Close()
-		_ = os.Remove(decFilePath)
-	}()
-
-	// Go to the beginning of the encrypted file
-	if _, err := encFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek to start of encrypted file: %w", err)
-	}
-
-	// Skip the salt (16 bytes) written at the start of the file
-	if _, err := encFile.Seek(16, io.SeekCurrent); err != nil {
-		return fmt.Errorf("failed to skip salt in encrypted file: %w", err)
-	}
-
-	for {
-		// Check if context is done
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Read the nonce
-		nonce := make([]byte, aesgcm.NonceSize())
-		if _, err := io.ReadFull(encFile, nonce); err != nil {
-			if err == io.EOF {
-				// Reached end of file
-				break
-			}
-			return fmt.Errorf("failed to read nonce: %w", err)
-		}
-
-		// Read the length of the ciphertext
-		lengthBytes := make([]byte, 8)
-		if _, err := io.ReadFull(encFile, lengthBytes); err != nil {
-			return fmt.Errorf("failed to read ciphertext length: %w", err)
-		}
-		ciphertextLength := binary.LittleEndian.Uint64(lengthBytes)
-
-		// Read the ciphertext
-		ciphertext := make([]byte, ciphertextLength)
-		if _, err := io.ReadFull(encFile, ciphertext); err != nil {
-			return fmt.Errorf("failed to read ciphertext: %w", err)
-		}
-
-		// Decrypt the chunk
-		plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
-		if err != nil {
-			return fmt.Errorf("failed to decrypt chunk: %w", err)
-		}
-
-		// Write the decrypted chunk to the decrypted file
-		if _, err := decFile.Write(plaintext); err != nil {
-			return fmt.Errorf("failed to write decrypted chunk: %w", err)
-		}
-	}
-
-	// Calculate the SHA256 hash of the decrypted file
-	if _, err := decFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek to start of decrypted file: %w", err)
-	}
+// checkIntegrity decrypts the encrypted file via the same chunk-decoding path used for restores and verifies its
+// SHA256 hash matches expectedHash.
+func checkIntegrity(ctx context.Context, encFile *os.File, key []byte, expectedHash []byte) error {
 	calculatedHash := sha256.New()
-	if _, err := io.Copy(calculatedHash, decFile); err != nil {
-		return fmt.Errorf("failed to calculate SHA256 of decrypted file: %w", err)
+	if err := core.DecryptHeaderedWithKey(ctx, encFile, key, calculatedHash); err != nil {
+		return err
 	}
 	actualHash := calculatedHash.Sum(nil)
 
