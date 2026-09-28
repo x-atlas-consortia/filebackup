@@ -19,10 +19,8 @@ type databaseWorkerResult struct {
 	FilesDeleted  int
 }
 
-// databaseFileInsertWorker handles inserting file records and walked paths into the
-// database in batches, then, once both channels are drained, detects and marks files
-// deleted under the given directories. It owns the single write connection for the
-// whole backup run so the walked_paths temp table remains valid throughout.
+// databaseFileInsertWorker handles inserting file records and walked paths into the database in batches, then, once
+// both channels are drained, detects and marks files deleted under the given directories.
 func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath string, directories []string, fileInsertCh <-chan database.InsertFileItem, walkedPathCh <-chan string, dbInitialized chan<- error) databaseWorkerResult {
 	workerLogger := logger.With(slog.String("worker", "database_file_insert"))
 
@@ -72,8 +70,7 @@ func databaseFileInsertWorker(ctx context.Context, logger *slog.Logger, dbPath s
 		walkedBatch = walkedBatch[:0]
 	}
 
-	// Multiplex both input channels until each is closed and drained; a channel is set
-	// to nil once closed so its select case blocks forever and stops being chosen.
+	// Multiplex both input channels until each is closed and drained.
 	fileCh := fileInsertCh
 	walkedCh := walkedPathCh
 	cancelled := false
@@ -134,8 +131,8 @@ loop:
 	return databaseWorkerResult{FilesInserted: totalInserted, FilesDeleted: deletedCount}
 }
 
-// detectDeletedFiles returns paths under the given directories that were previously
-// known but weren't seen during the current walk.
+// detectDeletedFiles returns paths under the given directories that were previously known but weren't seen during
+// the current walk.
 func detectDeletedFiles(ctx context.Context, db *database.Database, directories []string) ([]string, error) {
 	var deletedPaths []string
 	for _, dir := range directories {

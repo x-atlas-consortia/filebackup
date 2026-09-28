@@ -3,7 +3,6 @@ package restore
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,12 +16,12 @@ import (
 )
 
 // processManifestItemWorker processes manifest items from the provided channel.
-func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) {
+func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath, secret, outDir, tempDir string, itemCh <-chan aws.ManifestItem, downloader *aws.AWSS3FileManager) int {
 	// Read mode database
 	readOnlyDB, err := database.New(ctx, dbPath, true)
 	if err != nil {
 		logger.Error("Error opening database in read-only mode", slog.String("error", err.Error()))
-		return
+		return 0
 	}
 	defer func() {
 		if closeErr := readOnlyDB.Close(ctx); closeErr != nil {
@@ -30,18 +29,20 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath,
 		}
 	}()
 
+	var failed int
 	for {
 		select {
 		case item, ok := <-itemCh:
 			if !ok {
 				// No more manifest items
 				logger.Info("No more manifest items to process, shutting down")
-				return
+				return failed
 			}
 
 			// Process the manifest item
 			err := processManifestItem(ctx, item, outDir, secret, tempDir, readOnlyDB, downloader)
 			if err != nil {
+				failed++
 				logger.Error("Error processing manifest item",
 					slog.String("bucket", item.Bucket),
 					slog.String("key", item.Key),
@@ -51,7 +52,7 @@ func processManifestItemWorker(ctx context.Context, logger *slog.Logger, dbPath,
 
 		case <-ctx.Done():
 			// Context cancelled
-			return
+			return failed
 		}
 	}
 }
@@ -99,8 +100,10 @@ func processManifestItem(ctx context.Context, item aws.ManifestItem, outDir, sec
 	return nil
 }
 
-// decryptFile decrypts the input file and writes the decrypted content to the output file.
-func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, error) {
+// decryptFile decrypts the input file and writes the decrypted content to the output file. core.DecryptToWriter
+// auto-detects whether the input is the current headered format or the legacy pre-header format, so files backed up
+// before the format change remain restorable.
+func decryptFile(ctx context.Context, inPath, outPath, secret string) (checksum string, err error) {
 	inputFile, err := os.Open(inPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open input file for decryption: %w", err)
@@ -111,72 +114,19 @@ func decryptFile(ctx context.Context, inPath, outPath, secret string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("failed to create output file for decryption: %w", err)
 	}
-	defer outputFile.Close()
-
-	// Generate the encryption key
-	salt := make([]byte, 16)
-	if _, err := io.ReadFull(inputFile, salt); err != nil {
-		return "", fmt.Errorf("failed to read salt from input file: %w", err)
-	}
-	key := core.NewArgon2IDKey(secret, salt)
-	aesgcm, err := core.NewAESGCMCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create AES-GCM cipher: %w", err)
-	}
-
-	// Calculate the SHA256 hash of the original file for integrity verification
-	checksumHash := sha256.New()
-
-	for {
-		// Check the context
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		default:
-		}
-
-		// Read the nonce (ensure full read)
-		nonce := make([]byte, aesgcm.NonceSize())
-		if _, err := io.ReadFull(inputFile, nonce); err != nil {
-			// io.ReadFull returns io.EOF if no bytes were read (end of file)
-			// and io.ErrUnexpectedEOF for partial reads.
-			if err == io.EOF {
-				break
-			}
-			return "", fmt.Errorf("failed to read nonce from input file: %w", err)
-		}
-
-		// Read the length of the ciphertext
-		lenBuf := make([]byte, 8)
-		if _, err := io.ReadFull(inputFile, lenBuf); err != nil {
-			return "", fmt.Errorf("failed to read ciphertext length from input file: %w", err)
-		}
-		cypherLength := binary.LittleEndian.Uint64(lenBuf)
-
-		// Read the ciphertext
-		if cypherLength == 0 {
-			return "", fmt.Errorf("ciphertext length is zero")
-		}
-		ciphertext := make([]byte, cypherLength)
-		if _, err := io.ReadFull(inputFile, ciphertext); err != nil {
-			return "", fmt.Errorf("failed to read ciphertext from input file: %w", err)
-		}
-
-		// Decrypt the chunk
-		plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	// Close then remove on any error so callers never encounter a partial output file. Keep the file on success.
+	defer func() {
+		outputFile.Close()
 		if err != nil {
-			return "", fmt.Errorf("failed to decrypt chunk: %w", err)
+			os.Remove(outPath)
 		}
+	}()
 
-		// Update the checksum
-		if _, err := checksumHash.Write(plaintext); err != nil {
-			return "", fmt.Errorf("failed to update checksum: %w", err)
-		}
-
-		// Write the plaintext to the output file
-		if _, err := outputFile.Write(plaintext); err != nil {
-			return "", fmt.Errorf("failed to write plaintext to output file: %w", err)
-		}
+	// Calculate the SHA256 hash of the decrypted content for integrity verification, streaming it alongside the write
+	// to outputFile rather than hashing in a second pass.
+	checksumHash := sha256.New()
+	if err = core.DecryptToWriter(ctx, inputFile, secret, io.MultiWriter(outputFile, checksumHash)); err != nil {
+		return "", fmt.Errorf("failed to decrypt file: %w", err)
 	}
 
 	return fmt.Sprintf("%x", checksumHash.Sum(nil)), nil

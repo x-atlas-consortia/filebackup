@@ -15,6 +15,9 @@ import (
 )
 
 // Restore performs the file restore process using the provided configuration and manifest.
+// It returns an error if any files in the manifest could not be restored; partial failures
+// are logged per-file and counted so the caller gets a clear non-nil result rather than
+// a silent success when some files were skipped.
 func Restore(ctx context.Context, config core.Config, logLevel slog.Leveler, manifest []aws.ManifestItem, outDir, details, tempDir, profile string, maxWorkers int) error {
 	startTime := time.Now()
 
@@ -64,6 +67,11 @@ func Restore(ctx context.Context, config core.Config, logLevel slog.Leveler, man
 	processWorkerCount := maxWorkers
 	var processWg sync.WaitGroup
 
+	// resultCh collects each worker's failure count. It must be buffered to
+	// processWorkerCount so workers never block sending their result before
+	// processWg.Done() is called.
+	resultCh := make(chan int, processWorkerCount)
+
 	// Start file processing workers
 	logger.Info("Starting manifest item processing workers", slog.Int("count", processWorkerCount))
 	for i := range processWorkerCount {
@@ -71,7 +79,8 @@ func Restore(ctx context.Context, config core.Config, logLevel slog.Leveler, man
 		go func(id int) {
 			defer processWg.Done()
 			workerLogger := logger.With(slog.String("worker", fmt.Sprintf("process_manifest_item_%d", id)))
-			processManifestItemWorker(ctx, workerLogger, dbPath, config.EncryptionSecret, outDir, tempDir, manifestItemCh, downloader)
+			failed := processManifestItemWorker(ctx, workerLogger, dbPath, config.EncryptionSecret, outDir, tempDir, manifestItemCh, downloader)
+			resultCh <- failed
 		}(i)
 	}
 
@@ -85,20 +94,30 @@ func Restore(ctx context.Context, config core.Config, logLevel slog.Leveler, man
 		}
 	}
 
-	// Close channel and wait for workers to finish
+	// Close channel and wait for workers to finish, then drain results
 	close(manifestItemCh)
 	processWg.Wait()
+	close(resultCh)
 
-	// Insert restore event into the database
+	var totalFailed int
+	for n := range resultCh {
+		totalFailed += n
+	}
+
+	// Always insert the restore event, even for a partial restore, so the
+	// database reflects that a restore was attempted and when it ran.
 	err = insertRestoreEvent(ctx, dbPath, details, startTime, logger)
 	if err != nil {
 		logger.Error("Error inserting restore event", slog.String("error", err.Error()))
 		return err
 	}
 
-	fmt.Fprintf(logWriter, `time=%s, msg="Restore process completed" duration=%.2f seconds\n`,
-		time.Now().Format(time.RFC3339), time.Since(startTime).Seconds())
+	fmt.Fprintf(logWriter, `time=%s, msg="Restore process completed" files=%d failed=%d duration=%.2f seconds\n`,
+		time.Now().Format(time.RFC3339), len(manifest), totalFailed, time.Since(startTime).Seconds())
 
+	if totalFailed > 0 {
+		return fmt.Errorf("%d of %d file(s) failed to restore; see log for details", totalFailed, len(manifest))
+	}
 	return nil
 }
 
